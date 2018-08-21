@@ -40,41 +40,18 @@ calc_total_copynumber <- function(logr, purity, ploidy) {
 #' and 't_alt'
 #' @export
 calc_combined_genotype <- function(h_ref, h_alt, t_ref, t_alt,
-                                   host_baf_interval = c(0.25, 0.75),
-                                   tumour_baf_interval = c(0.1, 0.9)) {
+                                   baf_interval = c(0.25, 0.75),
+                                   min_reads = 3) {
     h_baf <- h_alt / (h_ref + h_alt)
-    t_baf <- t_alt / (t_ref + t_alt)
 
-    # Infer genotype using BAF. Could be misleading for low coverage,
-    # but low coverage variants will most likely have been removed before
-    # reaching this point in the pipeline
-    get_gt <- function(baf, interval) {
-        ifelse(
-            baf < interval[1],
-            "AA",
-            ifelse(
-                baf > interval[2],
-                "BB",
-                "AB"
-            )
-        )
-    }
-
-    h_gt <- get_gt(h_baf, host_baf_interval)
-    t_gt <- get_gt(t_baf, tumour_baf_interval)
-
-    combination_gt <- ifelse(
-        h_gt == "AA" & t_gt != "AA",
-        "AA/B*",
-        ifelse(h_gt == "BB" & t_gt != "BB",
-               "BB/A*",
-               ifelse(h_gt == "AB",
-                      "AB/*",
-                      NA)))
-    # ifelse(h_gt == "AA",
-    #        "AA/A*",
-    #        "BB/B*"))))
-    combination_gt
+    combined_gt <- ifelse(h_ref == 0 & t_ref >= min_reads,
+                          "BB/A*",
+                          ifelse(h_alt  == 0 & t_alt >= min_reads,
+                                 "AA/B*",
+                                 ifelse(h_ref >= min_reads & h_alt >= min_reads & h_baf %between% baf_interval,
+                                        "AB/*",
+                                        NA)))
+    combined_gt
 }
 
 #' @export
@@ -141,13 +118,15 @@ findpeaks <- function (x, thresh = 0.00001, from = -.75, to = 1.75, mindens = .2
     return(xdens$x[pks])
 }
 
-#' Segment copy number using an HMM.
+#' Segment copy number using an HMM. Separates a population of points with a "small" value
+#' from everything with a "larger" value, e.g. all copynumber==0 SNVs from all copynumber>=1 SNVs
 #' @param cn Copy number data
 #' @param prob01 Probability of transitioning from state CN0 to state CN1+
 #' @param prob10 Probability of transitioning from state CN1+ to state CN0
 #' @param mean0 Mean of state 0
 #' @param mean1 Mean of state 1
 #' @param python_exe Full path to python executable
+#' @param return_smaller_state Invert the selection, i.e. return the set of "large" values
 #' @return list of segment starts, segment ends, and the trained model
 #' @importFrom "reticulate" use_python source_python
 #' @export
@@ -186,4 +165,39 @@ hmm_segmentation <- function(cn, prob01, prob10, mean0, mean1, minrun = 1000, py
     starts <- which(c(prediction, F) & !c(F, prediction))
     ends <- which(!c(prediction, F) & c(F, prediction))
     list(starts = starts, ends = ends, model = model)
+}
+
+#' Write the 4 required files for ascat
+#' @param data - contains data needed by ascat
+#' @param filenames - list of 4 filenames, accessed as: tumour_logr, normal_logr, tumour_baf, normal_baf
+#' @export
+write_ascat_data <- function(data, filenames) {
+    stopifnot(length(filenames) == 4)
+    fwrite(x = data.frame(chr = data$chr,
+                          pos = data$cumpos,
+                          'tumour' = data$logr),
+           file = filenames$tumour_logr,
+           sep = "\t",
+           row.names = TRUE)
+
+    fwrite(x = data.frame(chr = data$chr,
+                          pos = data$cumpos,
+                          'normal' = 0),
+           file = filenames$normal_logr,
+           sep = "\t",
+           row.names = TRUE)
+
+    fwrite(x = data.frame(chr = data$chr,
+                          pos = data$cumpos,
+                          'tumour' = abs(data$baf - sample(x = c(0,1), size = nrow(data), replace = T))),
+           file = filenames$tumour_baf,
+           sep = "\t",
+           row.names = TRUE)
+
+    fwrite(x = data.frame(chr = data$chr,
+                          pos = data$cumpos,
+                          'normal' = abs(data$h_alt/(data$h_ref+data$h_alt) - sample(x = c(0,1), size = nrow(data), replace = TRUE))),
+           file = filenames$normal_baf,
+           sep = "\t",
+           row.names = TRUE)
 }

@@ -1,3 +1,4 @@
+#' @export
 variant_depth_filter <- function(dt, column_names, min_variant_reads, min_vaf) {
     mask <- rep(FALSE, nrow(dt))
     for (col in column_names) {

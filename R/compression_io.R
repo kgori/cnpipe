@@ -9,6 +9,7 @@ magic_number <- function(filename, n = 2) {
     x
 }
 
+#' @export
 is_gzip <- function(filename) {
     if (!file.exists(filename)) {
         stop("File not found")
@@ -16,6 +17,7 @@ is_gzip <- function(filename) {
     all(magic_number(filename, 2) == charToRaw("\x1f\x8b"))
 }
 
+#' @export
 is_bzip2 <- function(filename) {
     if (!file.exists(filename)) {
         stop("File not found")
