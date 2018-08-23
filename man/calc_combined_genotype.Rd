@@ -6,8 +6,8 @@
 host = hom if (coverage ≥ 10, as above) and 0 reads ref | alt
 host = het if ≥ 3 reads for both ALT and REF & .25 ≤ BAF ≤ .75}
 \usage{
-calc_combined_genotype(h_ref, h_alt, t_ref, t_alt, host_baf_interval = c(0.25,
-  0.75), tumour_baf_interval = c(0.1, 0.9))
+calc_combined_genotype(h_ref, h_alt, t_ref, t_alt, baf_interval = c(0.25,
+  0.75), min_reads = 3)
 }
 \arguments{
 \item{data}{= data frame / table with columns 'h_ref', 'h_alt', 't_ref'

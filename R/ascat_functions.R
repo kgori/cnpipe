@@ -126,18 +126,22 @@ findpeaks <- function (x, thresh = 0.00001, from = -.75, to = 1.75, mindens = .2
 #' @param mean0 Mean of state 0
 #' @param mean1 Mean of state 1
 #' @param python_exe Full path to python executable
+#' @param params String describing the parameters hmmlearn should optimise -
+#' s = start probs, m = means, c = covars, t = transition probs
 #' @param return_smaller_state Invert the selection, i.e. return the set of "large" values
+#' @param plot Histogram of data points belonging to state 0 (blue) or state 1 (red)
 #' @return list of segment starts, segment ends, and the trained model
 #' @importFrom "reticulate" use_python source_python
 #' @export
-hmm_segmentation <- function(cn, prob01, prob10, mean0, mean1, minrun = 1000, python_exe, return_smaller_state = TRUE) {
+hmm_segmentation <- function(cn, prob01, prob10, mean0, mean1, minrun = 1000, python_exe,
+                             params = "smc", return_smaller_state = TRUE, plot = FALSE) {
     use_python(python_exe)
     modelfile <- system.file("python", "gaussianhmm.py", package = "cnpipe")
     stopifnot(file.exists(modelfile))
     source_python(modelfile)
 
     model <- model_builder(prob_change_state_01 = prob01, prob_change_state_10 = prob10,
-                           mean_state0 = mean0, mean_state1 = mean1)
+                           mean_state0 = mean0, mean_state1 = mean1, params = params)
     data <- matrix(cn, ncol = 1)
     model$fit(data)
     prediction <- as.vector(model$predict(data))
@@ -149,6 +153,16 @@ hmm_segmentation <- function(cn, prob01, prob10, mean0, mean1, minrun = 1000, py
     }  else {
         runlengths$values[runlengths$lengths < minrun] <- smaller_state
     }
+
+    if (plot) {
+        p1 <- hist(cn[prediction==0], breaks = 100)
+        p2 <- hist(cn[prediction==1], breaks = 100)
+        lim <- range(cn)
+        plot(p1, xlim = lim, col = rgb(0,0,1,1/4), border = NA, main = NA, xlab = "NMIN", freq = FALSE)
+        plot(p2, xlim = lim, col = rgb(1,0,0,1/4), border = NA, add = T, freq = FALSE)
+
+    }
+
     if(return_smaller_state) {
         if (smaller_state == 0) {
             prediction <- !inverse.rle(runlengths)

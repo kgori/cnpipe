@@ -2,10 +2,11 @@
 % Please edit documentation in R/ascat_functions.R
 \name{hmm_segmentation}
 \alias{hmm_segmentation}
-\title{Segment copy number using an HMM.}
+\title{Segment copy number using an HMM. Separates a population of points with a "small" value
+from everything with a "larger" value, e.g. all copynumber==0 SNVs from all copynumber>=1 SNVs}
 \usage{
 hmm_segmentation(cn, prob01, prob10, mean0, mean1, minrun = 1000, python_exe,
-  return_smaller_state = TRUE)
+  params = "smc", return_smaller_state = TRUE, plot = FALSE)
 }
 \arguments{
 \item{cn}{Copy number data}
@@ -19,10 +20,18 @@ hmm_segmentation(cn, prob01, prob10, mean0, mean1, minrun = 1000, python_exe,
 \item{mean1}{Mean of state 1}
 
 \item{python_exe}{Full path to python executable}
+
+\item{params}{String describing the parameters hmmlearn should optimise -
+s = start probs, m = means, c = covars, t = transition probs}
+
+\item{return_smaller_state}{Invert the selection, i.e. return the set of "large" values}
+
+\item{plot}{Histogram of data points belonging to state 0 (blue) or state 1 (red)}
 }
 \value{
 list of segment starts, segment ends, and the trained model
 }
 \description{
-Segment copy number using an HMM.
+Segment copy number using an HMM. Separates a population of points with a "small" value
+from everything with a "larger" value, e.g. all copynumber==0 SNVs from all copynumber>=1 SNVs
 }
