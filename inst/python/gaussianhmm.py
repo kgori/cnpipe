@@ -13,5 +13,5 @@ def model_builder(prob_change_state_01=1e-3, prob_change_state_10=1e-6,
         [prob_change_state_10,     1 - prob_change_state_10]
     ])
     model.means_ = np.array([[mean_state0], [mean_state1]])
-    model.covars_ = np.array([[stdev^2], [stdev^2]])
+    model.covars_ = np.array([[stdev*stdev], [stdev*stdev]])
     return model
