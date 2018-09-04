@@ -23,6 +23,24 @@ karyoplot_load_segments <- function(filename) {
     GRanges(cn.segments)
 }
 
+#' Build a GRanges object describing the devil genome
+#' @importFrom "regioneR" toGRanges
+#' @export
+karyoplot_devil_genome <- function() {
+    toGRanges(
+        data.frame(
+            chr = as.character(1:6),
+            start = rep(1, 6),
+            end = c(582483498,
+                    598991806,
+                    519046246,
+                    412394343,
+                    249841267,
+                    215187208)
+        )
+    )
+}
+
 #' Build a GRanges object describing the dog genome
 #' @importFrom "regioneR" toGRanges
 #' @export
