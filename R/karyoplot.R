@@ -29,7 +29,7 @@ karyoplot_load_segments <- function(filename) {
 karyoplot_devil_genome <- function() {
     toGRanges(
         data.frame(
-            chr = as.character(1:6),
+            chr = paste0("Chr", 1:6),
             start = rep(1, 6),
             end = c(582483498,
                     598991806,
@@ -101,17 +101,17 @@ karyoplot <- function(baflogr.data, segments.data, genome, chromosomes, title) {
     kpPoints(kp, data=baflogr.data, y=baflogr.data$LOGR, cex = 0.2, col="black", r0=logr.r0, r1=logr.r1, ymin=logr.ymin, ymax=logr.ymax)
 
     # BAF
-    baf.r0 <- 0.75
-    baf.r1 <- 1.0
-    kpAxis(kp, r0=baf.r0, r1=baf.r1)
+    baf.r0 <- 0.25
+    baf.r1 <- 0.5
+    kpAxis(kp, r0=baf.r0, r1=baf.r1, side=2)
     kpPoints(kp, data=baflogr.data, y=baflogr.data$BAF, cex = 0.2, col="black", r0=baf.r0, r1=baf.r1)
 
     # Plot copy number segments in their own section
-    cn.r0 = 0.3
-    cn.r1 = 0.7
+    cn.r0 = 0.5
+    cn.r1 = 1.0
     cn.ymin <- 0
     cn.ymax <- 6
-    kpAxis(kp, r0=cn.r0, r1=cn.r1, ymin=cn.ymin, ymax=cn.ymax, tick.pos = seq(cn.ymin, cn.ymax), side=2, gr)
+    kpAxis(kp, r0=cn.r0, r1=cn.r1, ymin=cn.ymin, ymax=cn.ymax, tick.pos = seq(cn.ymin, cn.ymax), side=1)
     kpSegments(kp, data=segments.data, y0=(segments.data$nMajor+segments.data$nMinor)+0.05, y1=(segments.data$nMajor+segments.data$nMinor)+0.05, ymin=cn.ymin, ymax=cn.ymax, lwd=2, col = "red", r0 = cn.r0, r1 = cn.r1)
     kpSegments(kp, data=segments.data, y0=(segments.data$nMinor)-0.05, y1=(segments.data$nMinor)-0.05, ymin=cn.ymin, ymax=cn.ymax, lwd=2, col = "green", r0 = cn.r0, r1 = cn.r1)
     kpSegments(kp, data=segments.data, y0=(segments.data$nMajor), y1=(segments.data$nMajor), ymin=cn.ymin, ymax=cn.ymax, lwd=2, col = "blue", r0 = cn.r0, r1 = cn.r1)
