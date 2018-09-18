@@ -1,0 +1,142 @@
+# Beta mixture model, based on https://stackoverflow.com/a/43561339 and code from
+# Schröder, Christopher, and Sven Rahmann. 2017. Algorithms for Molecular Biology: AMB 12 (August): 21.
+
+#' Calculate log-likelihood of data given Beta(a, b)
+beta_ll <- function(data, a, b) {
+    dbeta(data, a, b, log = TRUE)
+}
+
+#' Find a and b s.t. Mean(Beta(a,b)) = mn and Var(Beta(a,b)) = va
+beta_ab <- function(mn, va) {
+    a <- ((1-mn)/va - 1/mn) * mn^2
+    b <- a * (1/mn - 1)
+    c(a, b)
+}
+
+#' EM - EXPECTATION STEP
+#' Given data, a matrix of parameters (params) and a vector of
+#' mixture component proportions (pi), compute the probability
+#' that each data point came from each component (weights)
+#' @importFrom "matrixStats" logSumExp
+get_weights <- function(data, params, pi) {
+    ncomp <- nrow(params)
+    ndata <- length(data)
+    stopifnot(ncomp == length(pi))
+    stopifnot(all.equal(sum(pi), 1))
+    ll <- matrix(0, nrow = ndata, ncol = ncomp)
+    for (i in 1:ncomp) {
+        ll[,i] <- log(pi[i]) + beta_ll(data, params[i,1], params[i,2])
+    }
+    weights <- exp(ll - apply(ll, 1, logSumExp))
+    bad <- apply(weights, 1, function(row) any(is.nan(row)))
+    weights[bad & data < 0.5, ] <- c(1, rep(0, ncomp-1))
+    weights[bad & data > 0.5, ] <- c(rep(0, ncomp-1), 1)
+    list(weights = weights, ll = sum(apply(ll, 1, logSumExp)))
+}
+
+#' EM - MAXIMISATION STEP
+#' Given data and a matrix of mixture component weights for each
+#' data point, estimate new parameter values (params) and mixture
+#' proportions (pi)
+get_updated_params <- function(data, weights) {
+    means <- data %*% weights / colSums(weights)
+    ncomp <- ncol(weights)
+    vars <- sapply(1:ncomp, function(i) (data - means[i])^2 %*% weights[,i] / sum(weights[,i]))
+    newpi <- colMeans(weights)
+    newparams <- matrix(0, nrow = ncol(weights), 2)
+    for (i in 1:ncomp) {
+        newparams[i, ] <- beta_ab(means[i], vars[i])
+    }
+    list(pi = newpi, params = newparams)
+}
+
+#' Return the largest scaled absolute difference among all parameter
+#' values in a comparison of old and new values
+get_delta <- function(new_params, old_params, new_pi, old_pi) {
+    epi <- max_relerror(old_pi, new_pi)
+    ea <- max_relerror(old_params[, 1], new_params[, 1])
+    eb <- max_relerror(old_params[, 2], new_params[, 2])
+    max(epi, ea, eb)
+}
+
+#' Return the maximum scaled absolute difference between vectors
+#' va and vb
+max_relerror <- function(va, vb) {
+    if (all(va == vb)) return (0)
+    numer <- abs(va - vb)
+    denom <- apply(matrix(c(va, vb), ncol = 2), 1, max)
+    max(numer / denom)
+}
+
+#' Run Expectation Maximisation to optimise the fit of a mixture of Beta components
+#' to data
+#' @param data (numeric matrix) - Observations in the range [0,1]
+#' @param init_params (numeric matrix) - Matrix of initial Beta(a, b) parameters, with
+#' one row per mixture component.
+#' @param init_pi (numeric vector) - Vector of initial mixture component proportions,
+#' with one entry per mixture component.
+#' @param max_steps (integer) - Maximum number of iterations to perform while optimising
+#' @param tol (numeric) - Terminate optimisation when change in parameters between iterations
+#' is less than tol
+#' @param plot (bool) - Plot optimisation progress to active graphical device
+#' @return list(params, pi, usedsteps, assignment, uncertainty) - Optimised parameters and mixture proportions,
+#' number of steps used, the assignment of each point to a mixture component,
+#' and the degree of uncertainty for each point
+#' @export
+estimate_mixture <- function(data, init_params, init_pi,
+                             max_steps = 1000, tol = 1e-5, plot = FALSE) {
+    n <- length(data)
+    ncomp <- nrow(init_params)
+
+    if (!sum(init_pi) == 1) stop("init_pi must sum to 1")
+    if (any(init_params <= 0)) stop("init_params must all be > 0")
+    if (!nrow(init_params) == length(init_pi)) stop("Number of rows of init_params must equal length of init_pi")
+
+    step <- 0
+    params <- init_params
+    pi <- init_pi
+
+    if (plot) {
+        ll<-get_weights(data,params,pi)$ll
+        hist(data, breaks = 100, border = "white", col = hcl(240, 50, 80), probability = TRUE, main = paste("step", step, "ll =", round(ll, 4)), sub = paste(round(pi, 2), collapse = " "))
+        x <- seq(0, 1, length.out = 1001)
+        dens <- t(t(apply(params, 1, function(r) dbeta(x, r[1], r[2]))) * pi)
+        apply(dens, 2, function(c) lines(x, c, lty = 3, col = hcl(240, 80, 50)))
+        lines(x, rowSums(dens), col = hcl(240, 100, 30), lwd = 2, lty = 1)
+    }
+
+    for (i in 1:max_steps) {
+        params_old <- params
+        pi_old <- pi
+
+        w <- get_weights(data, params, pi)
+        weights <- w$weights
+
+        new <- get_updated_params(data, weights)
+        params <- new$params
+        pi <- new$pi
+
+        step <- step + 1
+        delta <- get_delta(params, params_old, pi, pi_old)
+        if (step %% 10 == 0) print(paste(step, delta))
+
+        if (plot) {
+            hist(data, breaks = 100, border = "white", col = hcl(240, 50, 80), probability = TRUE, main = paste("step", step, "ll =", round(w$ll, 4)), sub = paste(round(pi, 2), collapse = " "))
+            x <- seq(0, 1, length.out = 1001)
+            dens <- t(t(apply(params, 1, function(r) dbeta(x, r[1], r[2]))) * pi)
+            apply(dens, 2, function(c) lines(x, c, lty = 3, col = hcl(240, 80, 50)))
+            lines(x, rowSums(dens), col = hcl(240, 100, 30), lwd = 2, lty = 1)
+        }
+        if (delta < tol) {
+            break
+        } else {
+            params <- new$params
+            pi <- new$pi
+        }
+    }
+    bic <- log(length(data)) * nrow(params) - 2 * w$ll
+    list(params = params, pi = pi, usedsteps = step,
+         assignment = apply(weights, 1, which.max),
+         uncertainty = 1 - apply(weights, 1, max),
+         data = data, ll = w$ll, bic = bic)
+}
