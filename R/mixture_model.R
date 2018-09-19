@@ -135,8 +135,34 @@ estimate_mixture <- function(data, init_params, init_pi,
         }
     }
     bic <- log(length(data)) * nrow(params) - 2 * w$ll
+
+    # Get the means of the component distributions, and sort everything by increasing mean
+    means <- apply(params, 1, function(row) row[1] / sum(row))
+    sorted <- order(means)
+    params <- params[sorted, ]
+    pi <- pi[sorted]
+    weights <- weights[, sorted]
+
     list(params = params, pi = pi, usedsteps = step,
          assignment = apply(weights, 1, which.max),
          uncertainty = 1 - apply(weights, 1, max),
          data = data, ll = w$ll, bic = bic)
 }
+
+#' @param v Model data
+#' @param k Number of clusters
+#' @return (List) Initial estimates of params and pi
+get_init <- function(v, k = 3) {
+    params <- matrix(0, ncol = 2, nrow = k)
+    pi <- rep(0, k)
+    bounds <- c(0, 1:k/k)
+    for (i in 1:k) {
+        dat <- v[v>bounds[i] & v <= bounds[i+1]]
+        params[i, ] <- beta_ab(mean(dat), var(dat))
+        pi[i] <- length(dat) / length(v)
+    }
+    pi <- pi / sum(pi)
+    params[params < 0.01] <- 0.01
+    list(params=params, pi=pi)
+}
+
