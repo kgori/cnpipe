@@ -1,18 +1,6 @@
 # Beta mixture model, based on https://stackoverflow.com/a/43561339 and code from
 # Schröder, Christopher, and Sven Rahmann. 2017. Algorithms for Molecular Biology: AMB 12 (August): 21.
 
-#' Calculate log-likelihood of data given Beta(a, b)
-beta_ll <- function(data, a, b) {
-    dbeta(data, a, b, log = TRUE)
-}
-
-#' Find a and b s.t. Mean(Beta(a,b)) = mn and Var(Beta(a,b)) = va
-beta_ab <- function(mn, va) {
-    a <- ((1-mn)/va - 1/mn) * mn^2
-    b <- a * (1/mn - 1)
-    c(a, b)
-}
-
 #' EM - EXPECTATION STEP
 #' Given data, a matrix of parameters (params) and a vector of
 #' mixture component proportions (pi), compute the probability
@@ -167,4 +155,3 @@ get_init <- function(v, k = 3) {
     params[params < 0.01] <- 0.01
     list(params=params, pi=pi)
 }
-
