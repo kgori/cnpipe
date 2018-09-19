@@ -1,4 +1,4 @@
-#' @importFrom "data.table" fread
+#' @importFrom "data.table" fread setcolorder
 #' @export
 process_tsv <- function(filename, min_host = 10, min_tumour = 1) {
     # Load data and select columns
@@ -39,19 +39,138 @@ calc_total_copynumber <- function(logr, purity, ploidy) {
 #' @param data = data frame / table with columns 'h_ref', 'h_alt', 't_ref'
 #' and 't_alt'
 #' @export
-calc_combined_genotype <- function(h_ref, h_alt, t_ref, t_alt,
-                                   baf_interval = c(0.25, 0.75),
+dep_calc_combined_genotype <- function(h_ref, h_alt, t_ref, t_alt,
+                                   het_baf_interval = c(0.25, 0.75),
+                                   hom_baf_boundaries = c(0.1, 0.9),
                                    min_reads = 3) {
     h_baf <- h_alt / (h_ref + h_alt)
 
-    combined_gt <- ifelse(h_ref == 0 & t_ref >= min_reads,
-                          "BB/A*",
-                          ifelse(h_alt  == 0 & t_alt >= min_reads,
-                                 "AA/B*",
-                                 ifelse(h_ref >= min_reads & h_alt >= min_reads & h_baf %between% baf_interval,
+    combined_gt <- ifelse(h_ref < min_reads & h_baf > hom_baf_boundaries[2],
+                          ifelse(t_ref >= min_reads, "BB/A*", "BB/B"),
+                          ifelse(h_alt < min_reads & h_baf < hom_baf_boundaries[1],
+                                 ifelse(t_alt >= min_reads, "AA/B*", "AA/A"),
+                                 ifelse(h_ref >= min_reads & h_alt >= min_reads & h_baf %between% het_baf_interval,
                                         "AB/*",
                                         NA)))
     combined_gt
+}
+
+#' @export
+calc_host_genotype <- function(h_ref, h_alt, groups = 3, min_reads = 3, sample_size = 10000, plot = FALSE) {
+    h_baf <- h_alt / (h_ref + h_alt)
+    mixture_data <- h_baf[h_baf > 0 & h_baf < 1]
+    mixture_data_sample <- sample(mixture_data, sample_size, replace = sample_size > length(mixture_data))
+    inits <- get_init(mixture_data, groups)
+    mmod <- estimate_mixture(mixture_data_sample, inits$params, inits$pi, tol = 1e-03, plot = plot)
+
+    if (plot) {
+        lines(mmod$data[order(mmod$data)], mmod$uncertainty[order(mmod$data)])
+        lower <- beta_boundary(mmod$params[1, 1], mmod$params[1, 2], mmod$params[2, 1], mmod$params[2, 2], mmod$pi[1], mmod$pi[2], log = TRUE)
+        if (groups == 3) {
+            upper <- beta_boundary(mmod$params[2, 1], mmod$params[2, 2], mmod$params[3, 1], mmod$params[3, 2], mmod$pi[2], mmod$pi[3], log = TRUE)
+            abline(v = c(lower, upper), col = "red", lty = 2)
+        } else {
+            abline(v = lower, col = "red", lty = 2)
+        }
+    }
+
+    # Don't assume means are in sorted order (but they should be)
+    means <- mmod$means
+    homref_class <- which.min(means)
+    homalt_class <- which.max(means)
+    het_class <- setdiff(1:3, c(homref_class, homalt_class))
+
+    # Apply prediction to full data sample
+    weights <- get_weights(h_baf, mmod$params, mmod$pi)$weights
+    classification <- apply(weights, 1, which.max)
+
+    ifelse(classification == homref_class,
+           "AA",
+           ifelse(classification == het_class,
+                  "AB",
+                  ifelse(classification == homalt_class,
+                         "BB",
+                         NA)))
+}
+
+#' @export
+calc_combined_genotype <- function(host_genotype, t_ref, t_alt, min_reads = 3) {
+    ifelse(host_genotype == "AB",
+           "AB/*",
+           ifelse(host_genotype == "AA",
+                  ifelse(t_alt >= min_reads, "AA/B*", "AA/A"),
+                  ifelse(host_genotype == "BB",
+                         ifelse(t_ref >= min_reads, "BB/A*", "BB/B"),
+                         NA)))
+}
+
+# @importFrom "matrixStats" logSumExp
+gaussian_boundary <- function(mean1, mean2, sd1, sd2, log=TRUE) {
+    x <- seq(mean1, mean2, length.out = 1001)
+    df <- data.frame(dens1 = dnorm(x, mean1, sd1, log=log),
+                     dens2 = dnorm(x, mean2, sd2, log=log))
+    y <- apply(df, 1, function(row) abs(row[1] - row[2]))
+    result <- x[which.min(y)]
+    # plot(x, y, type = "l", ylim = c(min(c(y, df$dens1, df$dens2)), max(y)))
+    # lines(x, df$dens1, lty=2)
+    # lines(x, df$dens2, lty=2)
+    abline(v = result, col = "red")
+    result
+}
+
+#' Find boundary between two Beta distributions
+beta_boundary <- function(a1, b1, a2, b2, p1, p2, log = TRUE, plot = FALSE) {
+    # Look at region between the modes of the two Beta distributions.
+    # If mode finding fails, fall back to distribution means.
+    mode1 <- tryCatch(beta_mode(a1, b1), error = function(e) {
+        warning(paste("Fall back to Beta mean for parameters a =", a1, "b =", b1))
+        beta_mean(a1, b1)
+    })
+    mode2 <- tryCatch(beta_mode(a2, b2), error = function(e) {
+        warning(paste("Fall back to Beta mean for parameters a =", a2, "b =", b2))
+        beta_mean(a2, b2)
+    })
+    psum <- p1 + p2
+    p1 <- p1 / psum
+    p2 <- p2 / psum
+    x <- seq(mode1, mode2, length.out = 1001)
+    if (log) {
+        df <- data.frame(dens1 = log(p1) + dbeta(x, a1, b1, log=log),
+                         dens2 = log(p2) + dbeta(x, a2, b2, log=log))
+        y <- apply(df, 1, function(row) {
+            log(abs(diff(exp(row - max(row))))) + max(row) # Log-AbsDiff-Exp function
+            })
+    } else {
+        df <- data.frame(dens1 = p1 * dbeta(x, a1, b1, log=log),
+                         dens2 = p2 * dbeta(x, a2, b2, log=log))
+        y <- apply(df, 1, function(row) abs(diff(row)))
+    }
+    result <- x[which.min(y)]
+    if (plot) {
+        plot(x, y, type = "l", ylim = c(min(c(y, df$dens1, df$dens2)), max(y)))
+        lines(x, df$dens1, lty=2)
+        lines(x, df$dens2, lty=2)
+        abline(v = result, col = "red")
+    }
+    result
+}
+
+#' Find mode of beta distribution
+beta_mode <- function(a, b) {
+    if (a > 1 & b > 1) {
+        return((a - 1) / (a + b - 2))
+    }
+    else if (a == 1 & b == 1) result <- 0.5 # Any value in [0, 1]
+    else if (a == 1 & b > 1) result <- 0
+    else if (a > 1 & b == 1) result <- 1
+    else stop(paste("Beta distribution has no mode: a =", a, "b =", b))
+    result
+}
+
+#' Find mean of beta distribution
+beta_mean <- function(a, b) {
+    if (a < 0 | b < 0) stop(paste("Beta parameters out of range: a =", a, "b =", b))
+    a / (a + b)
 }
 
 #' @export
@@ -61,11 +180,11 @@ calc_allele_specific_copynumber <- function(htgeno, baf, logr, purity, ploidy) {
                  ((2 * (1 - purity) + purity * ploidy) * (1 - baf) * 2^logr - (1 - purity)) / purity,
 
                  # else:
-                 ifelse(htgeno %in% c("AA/B*", "AA/A*"),
+                 ifelse(htgeno %in% c("AA/B*", "AA/A"),
                         # Host is homozygous ref:
                         ((2 * (1 - purity) + purity * ploidy) * (1 - baf) * 2^logr - 2 * (1 - purity)) / purity,
                         # else:
-                        ifelse(htgeno %in% c("BB/A*", "BB/B*"),
+                        ifelse(htgeno %in% c("BB/A*", "BB/B"),
                                # Host is homozygous alt:
                                ((2 * (1 - purity) + purity * ploidy) * (1 - baf) * 2^logr) / purity,
 

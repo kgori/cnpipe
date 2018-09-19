@@ -18,6 +18,7 @@ beta_ab <- function(mn, va) {
 #' mixture component proportions (pi), compute the probability
 #' that each data point came from each component (weights)
 #' @importFrom "matrixStats" logSumExp
+#' @export
 get_weights <- function(data, params, pi) {
     ncomp <- nrow(params)
     ndata <- length(data)
@@ -28,9 +29,9 @@ get_weights <- function(data, params, pi) {
         ll[,i] <- log(pi[i]) + beta_ll(data, params[i,1], params[i,2])
     }
     weights <- exp(ll - apply(ll, 1, logSumExp))
-    bad <- apply(weights, 1, function(row) any(is.nan(row)))
-    weights[bad & data < 0.5, ] <- c(1, rep(0, ncomp-1))
-    weights[bad & data > 0.5, ] <- c(rep(0, ncomp-1), 1)
+    bad <- apply(weights, 1, function(row) any(is.nan(row)|is.infinite(row)))
+    weights[bad & data < 0.5, ] <- rep(c(1, rep(0, ncomp-1)), each = sum(bad & data < 0.5))
+    weights[bad & data > 0.5, ] <- rep(c(rep(0, ncomp-1), 1), each = sum(bad & data > 0.5))
     list(weights = weights, ll = sum(apply(ll, 1, logSumExp)))
 }
 
@@ -139,12 +140,13 @@ estimate_mixture <- function(data, init_params, init_pi,
     # Get the means of the component distributions, and sort everything by increasing mean
     means <- apply(params, 1, function(row) row[1] / sum(row))
     sorted <- order(means)
+    means <- means[sorted]
     params <- params[sorted, ]
     pi <- pi[sorted]
     weights <- weights[, sorted]
 
     list(params = params, pi = pi, usedsteps = step,
-         assignment = apply(weights, 1, which.max),
+         means = means, classification = apply(weights, 1, which.max),
          uncertainty = 1 - apply(weights, 1, max),
          data = data, ll = w$ll, bic = bic)
 }
