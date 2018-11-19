@@ -7,7 +7,8 @@ Authors@R: c(person("Kevin", "Gori", email = "kcg25@cam.ac.uk", role = c("aut", 
 Maintainer: Kevin Gori <kcg25@cam.ac.uk>
 Description: Support functions for processing,
     cleaning and segmenting SNV data, and calling copy numbers
-Imports: data.table (>= 1.11.2), matrixStats (>= 0.53.1), logging (>= 0.7-103), reticulate (>= 1.8)
+Imports: data.table (>= 1.11.2), matrixStats (>= 0.53.1), logging (>= 0.7-103), reticulate (>= 1.8),
+    gridBase (>= 0.4-7), GenomicRanges (>= 1.32.3), gridExtra (>= 2.3), karyoploteR (>= 1.6.0), regioneR (>= 1.12.0)
 License: MIT
 Encoding: UTF-8
 LazyData: true
