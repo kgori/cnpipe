@@ -32,7 +32,6 @@ calc_total_copynumber <- function(logr, purity, ploidy) {
     ((2 * (1 - purity) + purity * ploidy) * 2^logr - 2 * (1 - purity)) / purity
 }
 
-
 #' Calculates host genotype
 #' host = hom if (coverage ≥ 10, as above) and 0 reads ref | alt
 #' host = het if ≥ 3 reads for both ALT and REF & .25 ≤ BAF ≤ .75
@@ -56,23 +55,12 @@ dep_calc_combined_genotype <- function(h_ref, h_alt, t_ref, t_alt,
 }
 
 #' @export
-calc_host_genotype <- function(h_ref, h_alt, groups = 3, min_reads = 3, sample_size = 10000, plot = FALSE) {
-    h_baf <- h_alt / (h_ref + h_alt)
-    mixture_data <- h_baf[h_baf > 0 & h_baf < 1]
+calc_host_genotype <- function(h_baf, groups = 3, min_reads = 3, sample_size = 10000, plot = FALSE) {
+    mixture_data <- h_baf[!is.na(h_baf) & h_baf > 0 & h_baf < 1]
     mixture_data_sample <- sample(mixture_data, sample_size, replace = sample_size > length(mixture_data))
     inits <- get_init(mixture_data, groups)
+    # print(inits)
     mmod <- estimate_mixture(mixture_data_sample, inits$params, inits$pi, tol = 1e-03, plot = plot)
-
-    if (plot) {
-        lines(mmod$data[order(mmod$data)], mmod$uncertainty[order(mmod$data)])
-        lower <- beta_boundary(mmod$params[1, 1], mmod$params[1, 2], mmod$params[2, 1], mmod$params[2, 2], mmod$pi[1], mmod$pi[2], log = TRUE)
-        if (groups == 3) {
-            upper <- beta_boundary(mmod$params[2, 1], mmod$params[2, 2], mmod$params[3, 1], mmod$params[3, 2], mmod$pi[2], mmod$pi[3], log = TRUE)
-            abline(v = c(lower, upper), col = "red", lty = 2)
-        } else {
-            abline(v = lower, col = "red", lty = 2)
-        }
-    }
 
     # Don't assume means are in sorted order (but they should be)
     means <- mmod$means
@@ -104,48 +92,46 @@ calc_combined_genotype <- function(host_genotype, t_ref, t_alt, min_reads = 3) {
                          NA)))
 }
 
-# @importFrom "matrixStats" logSumExp
-gaussian_boundary <- function(mean1, mean2, sd1, sd2, log=TRUE) {
-    x <- seq(mean1, mean2, length.out = 1001)
-    df <- data.frame(dens1 = dnorm(x, mean1, sd1, log=log),
-                     dens2 = dnorm(x, mean2, sd2, log=log))
-    y <- apply(df, 1, function(row) abs(row[1] - row[2]))
-    result <- x[which.min(y)]
-    # plot(x, y, type = "l", ylim = c(min(c(y, df$dens1, df$dens2)), max(y)))
-    # lines(x, df$dens1, lty=2)
-    # lines(x, df$dens2, lty=2)
-    abline(v = result, col = "red")
-    result
-}
-
 #' @export
 calc_allele_specific_copynumber <- function(htgeno, baf, logr, purity, ploidy) {
     na <- ifelse(htgeno == "AB/*",
                  # Host is heterozygous:
-                 ((2 * (1 - purity) + purity * ploidy) * (1 - baf) * 2^logr - (1 - purity)) / purity,
+                 tumour_a_allele_copy_number(logr = logr, baf = baf,
+                                             purity = purity, tumour_ploidy = ploidy,
+                                             ha = 1, hb = 1),
 
                  # else:
                  ifelse(htgeno %in% c("AA/B*", "AA/A"),
                         # Host is homozygous ref:
-                        ((2 * (1 - purity) + purity * ploidy) * (1 - baf) * 2^logr - 2 * (1 - purity)) / purity,
+                        tumour_a_allele_copy_number(logr = logr, baf = baf,
+                                                    purity = purity, tumour_ploidy = ploidy,
+                                                    ha = 2, hb = 0),
                         # else:
                         ifelse(htgeno %in% c("BB/A*", "BB/B"),
                                # Host is homozygous alt:
-                               ((2 * (1 - purity) + purity * ploidy) * (1 - baf) * 2^logr) / purity,
+                               tumour_a_allele_copy_number(logr = logr, baf = baf,
+                                                           purity = purity, tumour_ploidy = ploidy,
+                                                           ha = 0, hb = 2),
 
                                # Else ???:
                                NA)))
 
     nb <- ifelse(htgeno == "AB/*",
                  # Host is heterozygous:
-                 ((2 * (1 - purity) + purity * ploidy) * baf * 2^logr - (1 - purity)) / purity,
-                 ifelse(htgeno %in% c("AA/B*", "AA/A*"),
+                 tumour_b_allele_copy_number(logr = logr, baf = baf,
+                                             purity = purity, tumour_ploidy = ploidy,
+                                             ha = 1, hb = 1),
+                 ifelse(htgeno %in% c("AA/B*", "AA/A"),
                         # Host is homozygous ref:
-                        ((2 * (1 - purity) + purity * ploidy) * baf * 2^logr) / purity,
+                        tumour_b_allele_copy_number(logr = logr, baf = baf,
+                                                    purity = purity, tumour_ploidy = ploidy,
+                                                    ha = 2, hb = 0),
 
-                        ifelse(htgeno %in% c("BB/A*", "BB/B*"),
+                        ifelse(htgeno %in% c("BB/A*", "BB/B"),
                                # Host is homozygous alt:
-                               ((2 * (1 - purity) + purity * ploidy) * baf * 2^logr - 2 * (1 - purity)) / purity,
+                               tumour_b_allele_copy_number(logr = logr, baf = baf,
+                                                           purity = purity, tumour_ploidy = ploidy,
+                                                           ha = 0, hb = 2),
 
                                # Else ???:
                                NA)))
@@ -278,4 +264,85 @@ write_ascat_data <- function(data, filenames) {
            file = filenames$normal_baf,
            sep = "\t",
            row.names = TRUE)
+}
+
+#' @export
+tumour_a_allele_copy_number <- function(logr, baf, purity, tumour_ploidy, ha = 1, hb = 1) {
+    (2^logr * (1 - baf) * ((ha + hb) * (1 - purity) + purity * tumour_ploidy) - ha * (1 - purity)) / purity
+}
+
+#' @export
+tumour_b_allele_copy_number <- function(logr, baf, purity, tumour_ploidy, ha = 1, hb = 1) {
+    (2^logr * baf * ((ha + hb) * (1 - purity) + purity * tumour_ploidy) - hb * (1 - purity)) / purity
+}
+
+#' @export
+tumour_total_copy_number <- function(logr, purity, tumour_ploidy, ha = 1, hb = 1) {
+    (2^logr * ((ha + hb) * (1 - purity) + purity * tumour_ploidy) - (ha + hb) * (1 - purity)) / purity
+}
+
+#' Convert an ascat object (not an ascat result) to a data table
+#' containing SNP positions, logR and BAF at each position,
+#' and segmented average LogR and BAF where available
+#' @importFrom "data.table" as.data.table foverlaps setnames setkey setorder setcolorder
+#' @param ascat_obj ASCAT data object, including segmentation information
+#' @param ascat_result ASCAT analysis result object
+#' @return data table representation of ascat data
+#' @export
+ascatobj_to_datatable <- function(ascat_obj, ascat_result = NULL) {
+    ascat_obj <- copy(ascat_obj)
+    ascat_result <- copy(ascat_result)
+
+    # Tidying up object names
+    colnames(ascat_obj$Tumor_BAF) <- sub("\\..*$", "", colnames(ascat_obj$Tumor_BAF))
+    colnames(ascat_obj$Tumor_LogR) <- sub("\\..*$", "", colnames(ascat_obj$Tumor_LogR))
+    colnames(ascat_obj$Tumor_LogR_segmented) <- sub("\\..*$", "", colnames(ascat_obj$Tumor_LogR_segmented))
+    ascat_obj$samples <- sub("\\..*$", "", ascat_obj$samples)
+
+    snp_pos <- as.data.table(ascat_obj$SNPpos)
+    snp_pos[, ix := .I]
+    i <- 0
+    dts <- list()
+
+    for (samplename in ascat_obj$samples) {
+        i <- i + 1
+
+        base_dt <- as.data.table(ascat_obj$SNPpos)
+        base_dt[, chrom := as.character(chrom)]
+        base_dt[, snp_index := .I]
+        base_dt[, sample := samplename]
+        base_dt[, ("logR") := ascat_obj$Tumor_LogR[, samplename]]
+        base_dt[, ("segmented_logR") := ascat_obj$Tumor_LogR_segmented[, samplename]]
+        base_dt[, ("vaf") := ascat_obj$Tumor_BAF[, samplename]]
+        segbaf <- ascat_obj$Tumor_BAF_segmented[[i]]
+        rn <- rownames(segbaf)
+        base_dt[snp_index %in% rn, ("segmented_vaf") := segbaf[, 1]]
+        dts[[samplename]] <- base_dt
+    }
+
+    dts <- rbindlist(dts)
+
+    if (!is.null(ascat_result)) {
+        dts[, c("start.pos", "end.pos") := POS]
+        setkey(dts, sample, chrom, start.pos, end.pos)
+
+        seg <- copy(ascat_result$segments_raw)
+        setDT(seg)
+        seg[, sampleSegID := .I]
+        seg[, sample := sub("\\..*$", "", sample)]
+        setnames(seg, old = c("chr", "startpos", "endpos"), new = c("chrom", "start.pos", "end.pos"))
+        setkey(seg, sample, chrom, start.pos, end.pos)
+
+        dts <- foverlaps(dts, seg)
+        dts[, datasetSegID := paste0(unique(sampleSegID), collapse="_"), .(chrom, POS)]
+        dts[, datasetSegID := as.numeric(as.factor(datasetSegID))]
+
+        dts[, c("start.pos", "end.pos", "i.start.pos", "i.end.pos") := NULL]
+        dts[, c("orig.start.pos", "orig.end.pos", "orig.nSNPs") := .(min(POS), max(POS), .N), by = .(sample, sampleSegID)]
+        dts[, c("start.pos", "end.pos", "nSNPs") := .(min(POS), max(POS), .N), by = .(sample, datasetSegID)]
+        setcolorder(dts, c("snp_index", "chrom", "POS", "sample", "nMajor", "nMinor","nAraw", "nBraw", "logR", "vaf", "segmented_logR", "segmented_vaf",
+                           "sampleSegID", "datasetSegID", "start.pos", "end.pos", "nSNPs", "orig.start.pos", "orig.end.pos", "orig.nSNPs"))
+        setorder(dts, snp_index, chrom, POS, sample)
+    }
+    return (dts)
 }
