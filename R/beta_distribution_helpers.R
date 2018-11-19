@@ -1,6 +1,7 @@
 # Helper functions for working with the Beta distribution
 
 #' Find boundary between two Beta distributions
+#' @export
 beta_boundary <- function(a1, b1, a2, b2, p1, p2, log = TRUE, plot = FALSE) {
     # Look at region between the modes of the two Beta distributions.
     # If mode finding fails, fall back to distribution means.
@@ -38,6 +39,7 @@ beta_boundary <- function(a1, b1, a2, b2, p1, p2, log = TRUE, plot = FALSE) {
 }
 
 #' Find mode of beta distribution
+#' @export
 beta_mode <- function(a, b) {
     if (a > 1 & b > 1) {
         return((a - 1) / (a + b - 2))
@@ -50,17 +52,20 @@ beta_mode <- function(a, b) {
 }
 
 #' Find mean of beta distribution
+#' @export
 beta_mean <- function(a, b) {
     if (a < 0 | b < 0) stop(paste("Beta parameters out of range: a =", a, "b =", b))
     a / (a + b)
 }
 
 #' Calculate log-likelihood of data given Beta(a, b)
+#' @export
 beta_ll <- function(data, a, b) {
     dbeta(data, a, b, log = TRUE)
 }
 
 #' Find a and b s.t. Mean(Beta(a,b)) = mn and Var(Beta(a,b)) = va
+#' @export
 beta_ab <- function(mn, va) {
     a <- ((1-mn)/va - 1/mn) * mn^2
     b <- a * (1/mn - 1)
