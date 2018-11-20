@@ -55,12 +55,12 @@ dep_calc_combined_genotype <- function(h_ref, h_alt, t_ref, t_alt,
 }
 
 #' @export
-calc_host_genotype <- function(h_baf, groups = 3, min_reads = 3, sample_size = 10000, plot = FALSE) {
+calc_host_genotype <- function(h_baf, groups = 3, min_reads = 3, sample_size = 10000, tolerance = 1e-03, plot = FALSE) {
     mixture_data <- h_baf[!is.na(h_baf) & h_baf > 0 & h_baf < 1]
     mixture_data_sample <- sample(mixture_data, sample_size, replace = sample_size > length(mixture_data))
     inits <- get_init(mixture_data, groups)
     # print(inits)
-    mmod <- estimate_mixture(mixture_data_sample, inits$params, inits$pi, tol = 1e-03, plot = plot)
+    mmod <- estimate_mixture(mixture_data_sample, inits$params, inits$pi, tol = tolerance, plot = plot)
 
     # Don't assume means are in sorted order (but they should be)
     means <- mmod$means
