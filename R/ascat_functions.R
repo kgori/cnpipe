@@ -284,7 +284,7 @@ tumour_total_copy_number <- function(logr, purity, tumour_ploidy, ha = 1, hb = 1
 #' Convert an ascat object (not an ascat result) to a data table
 #' containing SNP positions, logR and BAF at each position,
 #' and segmented average LogR and BAF where available
-#' @importFrom "data.table" as.data.table foverlaps setnames setkey setorder setcolorder
+#' @importFrom "data.table" as.data.table copy foverlaps setnames setkey setorder setcolorder
 #' @param ascat_obj ASCAT data object, including segmentation information
 #' @param ascat_result ASCAT analysis result object
 #' @return data table representation of ascat data
