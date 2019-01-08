@@ -168,68 +168,68 @@ findpeaks <- function (x, thresh = 0.00001, from = -.75, to = 1.75, mindens = .2
     return(xdens$x[pks])
 }
 
-#' Segment copy number using an HMM. Separates a population of points with a "small" value
-#' from everything with a "larger" value, e.g. all copynumber==0 SNVs from all copynumber>=1 SNVs
-#' @param cn Copy number data
-#' @param prob01 Probability of transitioning from state CN0 to state CN1+
-#' @param prob10 Probability of transitioning from state CN1+ to state CN0
-#' @param mean0 Mean of state 0
-#' @param mean1 Mean of state 1
-#' @param python_exe Full path to python executable
-#' @param params String describing the parameters hmmlearn should optimise -
-#' s = start probs, m = means, c = covars, t = transition probs
-#' @param return_smaller_state Invert the selection, i.e. return the set of "large" values
-#' @param plot Histogram of data points belonging to state 0 (blue) or state 1 (red)
-#' @return list of segment starts, segment ends, and the trained model
-#' @importFrom "reticulate" use_python source_python
-#' @export
-hmm_segmentation <- function(cn, prob01, prob10, mean0, mean1, minrun = 1000, python_exe,
-                             params = "smc", return_smaller_state = TRUE, plot = FALSE) {
-    use_python(python_exe)
-    modelfile <- system.file("python", "gaussianhmm.py", package = "cnpipe")
-    stopifnot(file.exists(modelfile))
-    source_python(modelfile)
-
-    model <- model_builder(prob_change_state_01 = prob01, prob_change_state_10 = prob10,
-                           mean_state0 = mean0, mean_state1 = mean1, params = params)
-    data <- matrix(cn, ncol = 1)
-    model$fit(data)
-    prediction <- as.vector(model$predict(data))
-    runlengths <- rle(prediction)
-    smaller_state <- ifelse(model$means_[1] < model$means_[2], 0, 1)
-    larger_state <- ifelse(model$means_[1] < model$means_[2], 1, 0)
-    if (return_smaller_state) {
-        runlengths$values[runlengths$lengths < minrun] <- larger_state
-    }  else {
-        runlengths$values[runlengths$lengths < minrun] <- smaller_state
-    }
-
-    if (plot) {
-        p1 <- hist(cn[prediction==0], breaks = 100)
-        p2 <- hist(cn[prediction==1], breaks = 100)
-        lim <- range(cn)
-        plot(p1, xlim = lim, col = rgb(0,0,1,1/4), border = NA, main = NA, xlab = "NMIN", freq = FALSE)
-        plot(p2, xlim = lim, col = rgb(1,0,0,1/4), border = NA, add = T, freq = FALSE)
-
-    }
-
-    if(return_smaller_state) {
-        if (smaller_state == 0) {
-            prediction <- !inverse.rle(runlengths)
-        } else {
-            prediction <- !!inverse.rle(runlengths)
-        }
-    } else {
-        if (larger_state == 0) {
-            prediction <- !inverse.rle(runlengths)
-        } else {
-            prediction <- !!inverse.rle(runlengths)
-        }
-    }
-    starts <- which(c(prediction, F) & !c(F, prediction))
-    ends <- which(!c(prediction, F) & c(F, prediction))
-    list(starts = starts, ends = ends, model = model)
-}
+# #' Segment copy number using an HMM. Separates a population of points with a "small" value
+# #' from everything with a "larger" value, e.g. all copynumber==0 SNVs from all copynumber>=1 SNVs
+# #' @param cn Copy number data
+# #' @param prob01 Probability of transitioning from state CN0 to state CN1+
+# #' @param prob10 Probability of transitioning from state CN1+ to state CN0
+# #' @param mean0 Mean of state 0
+# #' @param mean1 Mean of state 1
+# #' @param python_exe Full path to python executable
+# #' @param params String describing the parameters hmmlearn should optimise -
+# #' s = start probs, m = means, c = covars, t = transition probs
+# #' @param return_smaller_state Invert the selection, i.e. return the set of "large" values
+# #' @param plot Histogram of data points belonging to state 0 (blue) or state 1 (red)
+# #' @return list of segment starts, segment ends, and the trained model
+# #' @importFrom "reticulate" use_python source_python
+# #' @export
+# hmm_segmentation <- function(cn, prob01, prob10, mean0, mean1, minrun = 1000, python_exe,
+#                              params = "smc", return_smaller_state = TRUE, plot = FALSE) {
+#     use_python(python_exe)
+#     modelfile <- system.file("python", "gaussianhmm.py", package = "cnpipe")
+#     stopifnot(file.exists(modelfile))
+#     source_python(modelfile)
+#
+#     model <- model_builder(prob_change_state_01 = prob01, prob_change_state_10 = prob10,
+#                            mean_state0 = mean0, mean_state1 = mean1, params = params)
+#     data <- matrix(cn, ncol = 1)
+#     model$fit(data)
+#     prediction <- as.vector(model$predict(data))
+#     runlengths <- rle(prediction)
+#     smaller_state <- ifelse(model$means_[1] < model$means_[2], 0, 1)
+#     larger_state <- ifelse(model$means_[1] < model$means_[2], 1, 0)
+#     if (return_smaller_state) {
+#         runlengths$values[runlengths$lengths < minrun] <- larger_state
+#     }  else {
+#         runlengths$values[runlengths$lengths < minrun] <- smaller_state
+#     }
+#
+#     if (plot) {
+#         p1 <- hist(cn[prediction==0], breaks = 100)
+#         p2 <- hist(cn[prediction==1], breaks = 100)
+#         lim <- range(cn)
+#         plot(p1, xlim = lim, col = rgb(0,0,1,1/4), border = NA, main = NA, xlab = "NMIN", freq = FALSE)
+#         plot(p2, xlim = lim, col = rgb(1,0,0,1/4), border = NA, add = T, freq = FALSE)
+#
+#     }
+#
+#     if(return_smaller_state) {
+#         if (smaller_state == 0) {
+#             prediction <- !inverse.rle(runlengths)
+#         } else {
+#             prediction <- !!inverse.rle(runlengths)
+#         }
+#     } else {
+#         if (larger_state == 0) {
+#             prediction <- !inverse.rle(runlengths)
+#         } else {
+#             prediction <- !!inverse.rle(runlengths)
+#         }
+#     }
+#     starts <- which(c(prediction, F) & !c(F, prediction))
+#     ends <- which(!c(prediction, F) & c(F, prediction))
+#     list(starts = starts, ends = ends, model = model)
+# }
 
 #' Write the 4 required files for ascat
 #' @param data - contains data needed by ascat
@@ -345,4 +345,69 @@ ascatobj_to_datatable <- function(ascat_obj, ascat_result = NULL) {
         setorder(dts, snp_index, chrom, POS, sample)
     }
     return (dts)
+}
+
+#' @export
+idealised_vaf <- function(ta, tb, ha, hb, purity) {
+    (hb * (1 - purity) + tb * purity) / ((ha+hb) * (1-purity) + (ta+tb) * purity)
+}
+
+#' @export
+idealised_logr <- function(ta, tb, ha, hb, purity, ploidy, host_ploidy = 2) {
+    log2(((ha+hb) * (1-purity) + (ta+tb) * purity) / (((1-purity) * host_ploidy + purity * ploidy)))
+}
+
+replace_na <- function(val, default) {
+    ifelse(is.na(val), default, val)
+}
+
+#' Simulate VAF according to certain parameters
+#' @export
+simulated_vaf <- function(samplesize, depth, ta, tb, ha, hb, purity, tploidy = 2, hploidy = 2, balance = 0) {
+    stopifnot(purity >= 0 & purity <= 1)
+
+    # Adjust the sequencing depth of this region from the average `depth`
+    # based on this region's total copy number and the tumour and host average ploidies
+    region_depth <- (((ta+tb) / tploidy) * purity + (1 - purity) * ((ha+hb) / hploidy)) * depth
+
+    # Work out the expected number of reads based on this region's depth
+    expected_ta <- replace_na(region_depth * purity * ta / (ta+tb), 0)
+    expected_tb <- replace_na(region_depth * purity * tb / (ta+tb), 0)
+    expected_ha <- replace_na(region_depth * (1-purity) * ha / (ha+hb), 0)
+    expected_hb <- replace_na(region_depth * (1-purity) * hb / (ha+hb), 0)
+
+    # Sample read counts from a Poisson distribution
+    nta <- rpois(samplesize, expected_ta + 0.01)
+    ntb <- rpois(samplesize, expected_tb + 0.01)
+    nha <- rpois(samplesize, expected_ha + 0.01)
+    nhb <- rpois(samplesize, expected_hb + 0.01)
+
+    vaf <- ((ntb+nhb) / (nta+ntb+nha+nhb))
+    expected_vaf <- ((expected_tb+expected_hb) / (expected_ta+expected_tb+expected_ha+expected_hb))
+
+    # Rebalance the SNPs onto major and minor alleles
+    ix <- seq(1, balance * length(vaf))
+    vaf[ix] <- 1 - vaf[ix]
+    list(data = vaf, expectation = expected_vaf)
+}
+
+#' Simulate logr according to certain parameters
+#' @export
+simulated_logr <- function(samplesize, depth, tn, hn, purity, tploidy = 2, hploidy = 2) {
+    stopifnot(purity >= 0 & purity <= 1)
+
+    # Work out the expected number of reads in this segment in a host sample
+    # sequenced to equal depth
+    expected_h <- (hn / hploidy) * depth
+
+    # Work out the expected number of reads mapping to this segment in the tumour sample,
+    # given the average depth, ploidy and purity
+    expected_t <- ((tn / tploidy) * purity + (1 - purity) * (hn / hploidy)) * depth
+
+    # Sample read counts from a Poisson distribution
+    nt <- rpois(samplesize, expected_t + 0.01)
+    nh <- rpois(samplesize, expected_h + 0.01)
+    logr <- log2(nt/nh)
+    expected_logr <- log2(expected_t / expected_h)
+    list(data = logr, expectation = expected_logr)
 }
