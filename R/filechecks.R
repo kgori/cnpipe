@@ -11,6 +11,17 @@ check_file <- function(filename) {
 
 #' @importFrom "logging" logerror
 #' @export
+check_dir <- function(filename) {
+    if (!dir.exists(filename)) {
+        logerror(paste("Directory", filename, "not found"))
+        stop("ERROR - directory error")
+    } else {
+        return (normalizePath(filename))
+    }
+}
+
+#' @importFrom "logging" logerror
+#' @export
 check_dir_and_create <- function(dirname) {
     if (!dir.exists(dirname)) {
         dir.create(dirname)
