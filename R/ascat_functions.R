@@ -55,7 +55,7 @@ dep_calc_combined_genotype <- function(h_ref, h_alt, t_ref, t_alt,
 }
 
 #' @export
-calc_host_genotype <- function(h_baf, groups = 3, min_reads = 3, sample_size = 10000, tolerance = 1e-03, plot = FALSE) {
+calc_host_genotype <- function(h_baf, groups = 3, min_reads = 3, sample_size = 10000, tolerance = 1e-03, plot = FALSE, estimate_uncertainty = FALSE) {
     mixture_data <- h_baf[!is.na(h_baf) & h_baf > 0 & h_baf < 1]
     mixture_data_sample <- sample(mixture_data, sample_size, replace = sample_size > length(mixture_data))
     inits <- get_init(mixture_data, groups)
@@ -72,13 +72,38 @@ calc_host_genotype <- function(h_baf, groups = 3, min_reads = 3, sample_size = 1
     weights <- get_weights(h_baf, mmod$params, mmod$pi)$weights
     classification <- apply(weights, 1, which.max)
 
-    ifelse(classification == homref_class,
-           "AA",
-           ifelse(classification == het_class,
-                  "AB",
-                  ifelse(classification == homalt_class,
-                         "BB",
-                         NA)))
+    genotype <- ifelse(classification == homref_class,
+                       "AA",
+                       ifelse(classification == het_class,
+                              "AB",
+                              ifelse(classification == homalt_class,
+                                     "BB",
+                                     NA)))
+
+    if (estimate_uncertainty) {
+        uncertainty <- 1 - apply(weights, 1, max)
+        return (list(genotype = genotype, uncertainty = uncertainty))
+    } else {
+        return (genotype)
+    }
+}
+
+#' @export
+calc_host_genotype_quick <- function(h_baf, groups = 3, plot = FALSE) {
+    dens <- density(c(-h_baf, h_baf, 1+h_baf), from = 0, to = 1)
+    homref_bound <- dens$x[dens$x < 0.5][which.min(dens$y[dens$x < 0.5])]
+    homalt_bound <- dens$x[dens$x > 0.5][which.min(dens$y[dens$x > 0.5])]
+    print(c(homref_bound, homalt_bound))
+    if (plot) {
+        hist(h_baf, breaks = seq(0, 1, length.out = 41),
+             border = "black", col = "paleturquoise1",
+             probability = TRUE, xlim = c(0, 1))#, ylim = c(0, max(dens$y)))
+        lines(dens, lwd = 2, col = "steelblue4", xlim = c(0, 1))
+        abline(v = c(homalt_bound, homref_bound), lty = 2, lwd = 2, col = "palevioletred")
+    }
+    ifelse(h_baf < homref_bound, "AA",
+           ifelse(h_baf < homalt_bound, "AB",
+                  "BB"))
 }
 
 #' @export
