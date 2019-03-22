@@ -411,3 +411,68 @@ simulated_logr <- function(samplesize, depth, tn, hn, purity, tploidy = 2, hploi
     expected_logr <- log2(expected_t / expected_h)
     list(data = logr, expectation = expected_logr)
 }
+
+
+#' Annotate `breaks` (=ascat_result$segments) so each segment is given two IDs:
+#'   dataset_segment_id - uniquely identifies the segment (chr, startpos, endpos) within the entire dataset
+#'                      - (a segment can occur in multiple samples)
+#'   sample_segment_id - gives the segment an index within the sample
+#' And two frequencies:
+#'   breakpoint_frequency - number of times a given startpos is observed
+#'   segment_frequency - number of times a unique segment is observed
+#' @export
+annotate_ascat_segments <- function(breaks) {
+
+    # Assign sample segment ids
+    setorder(breaks, sample, chr, startpos, endpos)
+    for (samplename in unique(breaks$sample)) {
+        breaks[sample==samplename, sample_segment_id := seq(.N)]
+    }
+
+    # Count dataset segment and breakpoint frequencies
+    breaks[, breakpoint_frequency := .N, by = .(chr, startpos)]
+    breaks[, segment_frequency := .N, by = .(chr, startpos, endpos)]
+
+    # Collect the unique segments (can occur in multiple samples)
+    ubk <- unique(breaks, by = c("chr", "startpos", "endpos"))
+    setorder(ubk, sample, chr, startpos, endpos)
+    ubk[, dataset_segment_id := .I]
+
+    # Transfer the unique IDs to the breakpoints list
+    setkey(ubk, chr, startpos, endpos)
+    setkey(breaks, chr, startpos, endpos)
+    breaks <- breaks[ubk][, -c("i.sample", "i.sample_segment_id", "i.nMajor", "i.nMinor",
+                               "i.breakpoint_frequency", "i.segment_frequency")][order(sample, chr, startpos, endpos)]
+    setcolorder(breaks, c("sample", "chr", "startpos", "endpos", "nMajor", "nMinor", "sample_segment_id", "dataset_segment_id", "segment_frequency"))
+    setkey(breaks, sample, chr, startpos, endpos)
+    return (breaks)
+}
+
+
+#' Create a new table of segments that inlcudes every breakpoint from every sample in
+#' `datatable`, where datatable = ascat_result$segments
+#' @importFrom "stringr" str_sort
+#' @export
+disjoin_ascat_segments <- function(datatable) {
+    .disjoin.chr <- function(dt) {
+        # data.table disjoin
+        starts <- unique(dt$startpos)
+        ends <- unique(dt$endpos)
+        adjstart <- head(sort(unique(c(starts, ends + 1))), -1)
+        adjend <- tail(sort(unique(c(ends, starts - 1))), -1)
+        adj <- data.table(startpos=adjstart, endpos=adjend, width=adjend - adjstart + 1)
+        setkey(adj, startpos, endpos)
+        unique(foverlaps(dt, adj, nomatch=0L, minoverlap=1L),
+               by = c("startpos", "endpos"))[, -c("i.startpos", "i.endpos")]
+    }
+    res <- datatable[, .disjoin.chr(.SD), by = chr, .SDcols = c("startpos", "endpos")]
+
+    # Set sort order
+    chroms <- stringr::str_sort(unique(res$chr))
+    res[, chr := factor(chr, levels = chroms)]
+    setorder(res, chr, startpos, endpos)
+    res[, chr := as.character(chr)]
+    res$ID <- res[, .I]
+    setkey(res, chr, startpos, endpos)
+    return(res)
+}
