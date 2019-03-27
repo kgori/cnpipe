@@ -16,3 +16,21 @@ estimate_purity <- function(host_vaf, tumour_vaf, logr,
     approx_ploidy <- 2 / (2^(mean(logr[tum_cn2_ix])) * approx_purity) - 2 / approx_purity + 2
     list(purity = approx_purity, ploidy = approx_ploidy)
 }
+
+#' Reflect values in v around 0.5
+#' (assumes 0 <= val <= 1, for all val in v)
+#' @examples
+#' mirror(c(0.1, 0.2, 0.6, 0.7, 0.4, 0.8))
+#' @export
+mirror <- function(v) ifelse(v > 0.5, 1 - v, v)
+
+#' Clamp values in v to `lower` and `upper`, so that
+#' any value `val` in `v` for which `val` < `lower`
+#' is replaced by `lower`, and `val` > `upper` is
+#' replaced by `upper`
+#' @examples
+#' clamp(c(0, 0.4, 0.6, 1.0), 0.001, 0.999)
+#' @export
+clamp <- function(v, lower, upper) {
+    pmin(pmax(v, lower), upper)
+}
