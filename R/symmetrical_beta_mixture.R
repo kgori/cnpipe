@@ -118,15 +118,24 @@ finite_diff <- function(fn, params, param_index, h = 0.0001) {
 #' @export
 est_sbeta <- function(data, startval = c(10, 10)) {
     objective <- function(param) {
-        llsbeta(data, param[1], param[2], 0.5)
+        -llsbeta(data, param[1], param[2], 0.5)
     }
 
     gradient <- function(param) {
-        c(
-            dsbeta_deriv_wrt_a(data, param[1], param[2], 0.5),
-            dsbeta_deriv_wrt_b(data, param[1], param[2], 0.5)
+        -c(
+            llsbeta_deriv_wrt_a(data, param[1], param[2], 0.5),
+            llsbeta_deriv_wrt_b(data, param[1], param[2], 0.5)
         )
     }
-
     optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01))
 }
+
+
+# (Debug function)
+.add_tangent_line <- function(a, b, data) {
+    y <- llsbeta(data, a, b, 0.5)
+    grad <- llsbeta_deriv_wrt_a(data, a, b, 0.5)
+    i <- y - grad*a
+    abline(i, grad)
+}
+

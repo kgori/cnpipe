@@ -50,21 +50,37 @@ dll_reflbeta <- function(params, data) {
     dll_wrt_a <- dreflbeta_deriv_wrt_a(data, params[1], params[2])
     dll_wrt_b <- dreflbeta_deriv_wrt_b(data, params[1], params[2])
 
-
     c(sum(dll_wrt_a / exp(ll - mll) / exp(mll)),
       sum(dll_wrt_b / exp(ll - mll) / exp(mll)))
 }
 
 #' Estimate parameters of reflected Beta distribution by maximum likelihood
+#' @importFrom "nloptr" slsqp
 #' @export
-est_reflbeta <- function(data, startval = c(10, 10)) {
+est_reflbeta <- function(data, startval = c(1, 10)) {
     objective <- function(param) {
-        ll_reflbeta(param, data)
+        -ll_reflbeta(param, data)
     }
 
     gradient <- function(param) {
-        dll_reflbeta(param, data)
+        -dll_reflbeta(param, data)
     }
 
-    optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01))
+    ineq <- function(x) {
+        x[2] - x[1]
+    }
+
+    if (ineq(startval) < 0) {
+        startval <- rev(startval)
+    }
+
+    slsqp(startval, objective, gradient, hin = ineq, lower = c(0.01, 0.01))
+}
+
+# (Debug function)
+.add_tangent_line <- function(a, b, data, index) {
+    y <- ll_reflbeta(c(a, b), data)
+    grad <- dll_reflbeta(c(a, b), data)[index]
+    i <- y - grad*x
+    abline(i, grad)
 }
