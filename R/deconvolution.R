@@ -126,13 +126,14 @@ estimate <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, p
     counts <- count_matrix(tumour_ref, tumour_alt, result$par)
 
     if (plot) {
-
+        # Compute objective over a grid
         X <- seq(0.01, 0.99, length.out = 99)
         Y <- seq(0.01, 0.99, length.out = 99)
         g <- expand.grid(X, Y)
         z <- apply(g, 1, objective)
         g$z <- z
 
+        # Maps objective values to colours: optimum=red
         colours <- colorRamp(c("red","white", "blue"), bias=5, space = "rgb")((z - min(z)) / (max(z - min(z))))
         colours <- apply(colours, 1, function(x) do.call(rgb, as.list(x/255)))
 
@@ -144,7 +145,7 @@ estimate <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, p
         points(result$par[1], result$par[2], pch = 4, cex = 5, lwd=2)
 
         # Can use points in `ell` to construct CI around tumour and host vaf estimates
-        ell<-mixtools::ellipse(result$par, abs(covariance), newplot = FALSE, lty=1, lwd=2, npoints=100)
+        ell<-ellipse(result$par, abs(covariance), newplot = FALSE, lty=1, lwd=2, npoints=100)
         mats <- apply(ell, 1, count_matrix, ref=tumour_ref, alt=tumour_alt)
         tvafs <- apply(mats, 2, function(x) x[2] / x[3])
         hvafs <- apply(mats, 2, function(x) x[5] / x[6])
