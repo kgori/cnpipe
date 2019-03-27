@@ -54,3 +54,17 @@ dll_reflbeta <- function(params, data) {
     c(sum(dll_wrt_a / exp(ll - mll) / exp(mll)),
       sum(dll_wrt_b / exp(ll - mll) / exp(mll)))
 }
+
+#' Estimate parameters of reflected Beta distribution by maximum likelihood
+#' @export
+est_reflbeta <- function(data, startval = c(10, 10)) {
+    objective <- function(param) {
+        ll_reflbeta(param, data)
+    }
+
+    gradient <- function(param) {
+        dll_reflbeta(param, data)
+    }
+
+    optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01))
+}

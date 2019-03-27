@@ -112,3 +112,21 @@ finite_diff <- function(fn, params, param_index, h = 0.0001) {
     }
     (do.call(fn, params_2) - do.call(fn, params_1)) / (2*h)
 }
+
+#' Estimate parameters of symmetrical Beta distribution by maximum likelihood
+#' (assumes mixture weight fixed to 0.5)
+#' @export
+est_sbeta <- function(data, startval = c(10, 10)) {
+    objective <- function(param) {
+        llsbeta(data, param[1], param[2], 0.5)
+    }
+
+    gradient <- function(param) {
+        c(
+            dsbeta_deriv_wrt_a(data, param[1], param[2], 0.5),
+            dsbeta_deriv_wrt_b(data, param[1], param[2], 0.5)
+        )
+    }
+
+    optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01))
+}
