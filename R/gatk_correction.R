@@ -37,7 +37,7 @@ gatk_decompose <- function(data, filter1 = 0.1, filter2 = 0.05, filter3 = 0.001,
     rowmedian = data[, rowMedians(as.matrix(.SD)), .SDcols = samples]
 
     # GATK step 3 - Apply 1st filter - remove intervals with median across all samples below 10%ile
-    loginfo(paste0("Filtering out regions with a median across all samples below the ", filter1*100, "% quantile..."), logger = "LOGR")
+    loginfo(paste0("Filtering out regions with a median across all samples below the ", filter1*100, "%% quantile..."), logger = "LOGR")
     mask <- (rowmedian >= quantile(rowmedian, filter1) & rowmedian != 0) # filters out bad rows - a vector of length == nrow(data),
     # TRUE for each row to retain, FALSE for each row to remove
 
@@ -49,7 +49,7 @@ gatk_decompose <- function(data, filter1 = 0.1, filter2 = 0.05, filter3 = 0.001,
     # GATK step 5 - filter out samples with >5% 0-coverage targets (SKIP)
 
     # GATK step 6 - filter out targets with >5% 0-coverage samples
-    loginfo(paste0("Filtering out regions with greater than ", filter2*100, "% 0-coverage samples..."), logger = "LOGR")
+    loginfo(paste0("Filtering out regions with greater than ", filter2*100, "%% 0-coverage samples..."), logger = "LOGR")
     mask <- mask & (apply(data, 1, function(v) sum(v==0) / length(v)) <= filter2)
 
     # GATK step 7 - filter out samples whose median coverage is outside the 2.5-97.5%ile range (SKIP)
@@ -63,7 +63,7 @@ gatk_decompose <- function(data, filter1 = 0.1, filter2 = 0.05, filter3 = 0.001,
     }), .SDcols = samples]
 
     # GATK step 9 - Winsorize
-    loginfo(paste0("Clamping outliers outside the ", filter3*100, "% and ", (1-filter3)*100, "% percentiles to these values..."), logger = "LOGR")
+    loginfo(paste0("Clamping outliers outside the ", filter3*100, "%% and ", (1-filter3)*100, "%% percentiles to these values..."), logger = "LOGR")
     skip_winsorize = FALSE
     if (! skip_winsorize) {
         wins_range <- c(filter3, 1 - filter3)
