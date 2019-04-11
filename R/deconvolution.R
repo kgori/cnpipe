@@ -208,18 +208,17 @@ deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity
          sample_vaf_with_het_host=(counts[2,1] + counts[3,2] / 2) / counts[3,3])
 }
 
-# Uses `estimate` to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous
-estimate_tumour_vaf_and_correct_to_het <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity) {
-    counts <- estimate(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, plot = FALSE)$counts
-    (counts[2,1] + counts[3,2] / 2) / counts[3,3]
+#' Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous
+convert_to_het_host <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity) {
+    deconvolute(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, plot = FALSE)$sample_vaf_with_het_host
 }
 
-# Uses `estimate` to calculate adjusted tumour vaf as it would be if there were no host contamination
+#' Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if there were no host contamination
 estimate_tumour_vaf <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity) {
-    estimate(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, plot = FALSE)$pure_tumour_vaf
+    deconvolute(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, plot = FALSE)$pure_tumour_vaf
 }
 
-#' Uses `estimate` to calculate adjusted tumour vaf as it would be if there were no host contamination
+#' Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if there were no host contamination
 #' (vectorised over indicated parameters)
 #' @param tumour_ref (vectorised) - number of REF reads observed in host-contaminated tumour, at current site
 #' @param tumour_alt (vectorised) - number of ALT reads observed in host-contaminated tumour, at current site
@@ -233,7 +232,7 @@ v.estimate_tumour_vaf <-
     Vectorize(estimate_tumour_vaf,
               vectorize.args = c("tumour_ref", "tumour_alt", "host_ref", "host_alt", "logr"))
 
-#' Uses `estimate` to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous
+#' Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous
 #' (vectorised over indicated parameters)
 #' @param tumour_ref (vectorised) - number of REF reads observed in host-contaminated tumour, at current site
 #' @param tumour_alt (vectorised) - number of ALT reads observed in host-contaminated tumour, at current site
@@ -243,6 +242,6 @@ v.estimate_tumour_vaf <-
 #' @param purity (NOT vectorised) - Estimate of tumour purity (aka aberrant cell count)
 #' @return vector of VAF values
 #' @export
-v.estimate_tumour_vaf_and_correct_to_het <-
-    Vectorize(estimate_tumour_vaf_and_correct_to_het,
+v.convert_to_het_host <-
+    Vectorize(convert_to_het_host,
               vectorize.args = c("tumour_ref", "tumour_alt", "host_ref", "host_alt", "logr"))
