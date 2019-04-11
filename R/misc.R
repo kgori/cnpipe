@@ -19,18 +19,36 @@ estimate_purity <- function(host_vaf, tumour_vaf, logr,
 
 #' Reflect values in v around 0.5
 #' (assumes 0 <= val <= 1, for all val in v)
+#' @param v A vector of numbers in the interval [0, 1]
 #' @examples
 #' mirror(c(0.1, 0.2, 0.6, 0.7, 0.4, 0.8))
+#' # [1] 0.1 0.2 0.4 0.3 0.4 0.2
 #' @export
 mirror <- function(v) ifelse(v > 0.5, 1 - v, v)
 
-#' Clamp values in v to `lower` and `upper`, so that
-#' any value `val` in `v` for which `val` < `lower`
-#' is replaced by `lower`, and `val` > `upper` is
-#' replaced by `upper`
+#' Clamp values in \code{v} to \code{lower} and \code{upper}, so that
+#' any value \code{val} in \code{v} for which \code{val}
+#' < \code{lower} is replaced by \code{lower}, and
+#' \code{val} > \code{upper} is replaced by \code{upper}
+#' @param v A vector of numbers.
+#' @param lower A number. Any values in `v` below this are replaced.
+#' @param upper A number. Any values in `v` above this are replaced.
+#' @return A vector like \code{v}, with all values less than
+#' \code{lower} or greater than \code{upper} replaced.
 #' @examples
 #' clamp(c(0, 0.4, 0.6, 1.0), 0.001, 0.999)
+#' # [1] 0.001 0.400 0.600 0.999
 #' @export
 clamp <- function(v, lower, upper) {
     pmin(pmax(v, lower), upper)
+}
+
+scale_to_unit <- function(v) {
+    r <- range(v)
+    new <- (v - r[1]) / (r[2] - r[1])
+    list(vals=new, undo_params=r)
+}
+
+undo_scale_to_unit <- function(v, undo_params) {
+    v * (undo_params[2] - undo_params[1]) + undo_params[1]
 }
