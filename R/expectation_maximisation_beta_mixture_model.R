@@ -75,10 +75,20 @@ plot_estimation_step <- function(data, params, pi, step) {
     x <- seq(0, 1, length.out = 1001)
     w <- get_weights(x, params, pi)$weights
     uncertainty <- 1 - apply(w, 1, max)
-    bounds <- c(
-        beta_boundary(params[1, 1], params[1, 2], params[2, 1], params[2, 2], pi[1], pi[2], log = FALSE),
-        beta_boundary(params[2, 1], params[2, 2], params[3, 1], params[3, 2], pi[2], pi[3], log = FALSE)
-    )
+
+    bounds <- c()
+
+    for (i in 2:nrow(params)) {
+        bounds <- append(
+            bounds,
+            beta_boundary(params[i-1, 1], params[i-1, 2], params[i, 1], params[i, 2], pi[i-1], pi[i], log = FALSE)
+        )
+    }
+
+    # bounds <- c(
+    #     beta_boundary(params[1, 1], params[1, 2], params[2, 1], params[2, 2], pi[1], pi[2], log = FALSE),
+    #     beta_boundary(params[2, 1], params[2, 2], params[3, 1], params[3, 2], pi[2], pi[3], log = FALSE)
+    # )
 
     # Draw the histogram
     layout(matrix(c(1,1,1,3,
