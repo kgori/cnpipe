@@ -108,6 +108,30 @@ count_matrix <- function(ref, alt, p) {
     m
 }
 
+
+#' Helper function to find the maximum likelihood estimate of P(H|A) and P(H|B)
+find_mle <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, hess = FALSE) {
+    pseudocount <- 0.5
+    n <- tumour_ref + pseudocount
+    v <- tumour_alt + pseudocount
+    a <- host_ref + pseudocount
+    b <- host_alt + pseudocount
+    r <- exp(logr)
+
+    objective <- function(x) {
+        -loglik(x[1], x[2], n, v, r, purity, a, b)
+    }
+
+    gradient <- function(x) {
+        -dloglik(x[1], x[2], n, v, r, purity, a, b)
+    }
+
+    optim(c(0.5, 0.5), objective, gr = gradient, method = "L-BFGS-B",
+          lower = c(1e-6, 1e-6),
+          upper = c(1 - 1e-6, 1 - 1e-6),
+          hessian = hess)
+}
+
 #' Estimate the host and tumour components from a host-contaminated tumour sample
 #' @param tumour_ref number of REF reads observed in host-contaminated tumour, at current site
 #' @param tumour_alt number of ALT reads observed in host-contaminated tumour, at current site
@@ -131,25 +155,10 @@ count_matrix <- function(ref, alt, p) {
 #' deconvolute(90, 15, 71, 8, 0.03670243, 0.59, FALSE)
 #' @export
 deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, plot=FALSE) {
-    pseudocount <- 0.5
-    n <- tumour_ref + pseudocount
-    v <- tumour_alt + pseudocount
-    a <- host_ref + pseudocount
-    b <- host_alt + pseudocount
-    r <- exp(logr)
+    # All the numerical work is done in find_mle. the rest of this function
+    # is for convenient presentation of the result.
+    result <- find_mle(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, hess = TRUE)
 
-    objective <- function(x) {
-        -loglik(x[1], x[2], n, v, r, purity, a, b)
-    }
-
-    gradient <- function(x) {
-        -dloglik(x[1], x[2], n, v, r, purity, a, b)
-    }
-
-    result <- optim(c(0.5, 0.5), objective, gr = gradient, method = "L-BFGS-B",
-                    lower = c(1e-6, 1e-6),
-                    upper = c(1 - 1e-6, 1 - 1e-6),
-                    hessian = TRUE)
     covariance <- solve(result$hessian)
     counts <- count_matrix(tumour_ref, tumour_alt, result$par)
 
@@ -245,3 +254,37 @@ v.estimate_tumour_vaf <-
 v.convert_to_het_host <-
     Vectorize(convert_to_het_host,
               vectorize.args = c("tumour_ref", "tumour_alt", "host_ref", "host_alt", "logr"))
+
+
+#######
+# WIP functions not for export yet - 24/04/2019
+
+get_counts <-
+    function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity) deconvolute(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, FALSE)$counts
+
+.v.get_counts <-
+    Vectorize(get_counts, vectorize.args = c("tumour_ref", "tumour_alt", "host_ref", "host_alt", "logr"))
+
+v.get_counts <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity) {
+    arr <- .v.get_counts(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity)
+    array(arr, dim = c(3, 3, length(tumour_ref)))
+}
+
+
+.get_sequence <-
+    function(refbase, altbase, tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, minreads, minvaf)
+    {
+        if (tumour_ref + tumour_alt == 0) {
+            return ("N")
+        }
+        result <- deconvolute(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, FALSE)$counts[2:3, 1]
+        ifelse(result[1] >= minreads & result[1]/result[2] >= minvaf, altbase, refbase)
+    }
+
+.v.get_sequence <-
+    Vectorize(.get_sequence, vectorize.args = c("refbase", "altbase", "tumour_ref", "tumour_alt", "host_ref", "host_alt", "logr"))
+
+v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, minreads, minvaf) {
+    paste(.v.get_sequence(refbase, altbase, tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, minreads, minvaf), collapse = "")
+}
+

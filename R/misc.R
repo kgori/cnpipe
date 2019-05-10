@@ -69,3 +69,25 @@ undo_scale_to_unit <- function(v, undo_params) {
 expected_loh_vaf <- function(purity, logr, ploidy) {
     (1 - purity) / ((1 - purity) + 2^logr * (2 * (1 - purity) + purity * ploidy))
 }
+
+#' Returns segmented logR using pcf from the copynumber package
+#' Intended for finishing off already segmented data, so ideally
+#' the logr vector will be fairly short, and the penalty fairly
+#' high
+#' @importFrom "copynumber" pcf
+#' @export
+#' @param chr (character) Chromosome name
+#' @param pos (integer vector) Genome positions
+#' @param logr (real vector) logR values at each position
+#' @param penalty (real) amount to penalise the PCF algorithm
+#' creating a new segment (higher values -> fewer segments)
+#' @param kmin (int) minimum number of data points in aa segment
+resegment_logr <- function(chr, pos, logr, penalty=100, kmin=5) {
+    df <- data.frame(CHROM = chr, POS = pos, LOGR = logr)
+    suppressWarnings(segments <- pcf(df, gamma = penalty, kmin = kmin))
+    setDT(segments)
+    setnames(segments, old = c("chrom", "start.pos", "end.pos", "n.probes"), new = c("chr", "startpos", "endpos", "Nsnps"))
+    segments[, width := endpos - startpos + 1]
+    setcolorder(segments, c("chr", "startpos", "endpos", "width", "Nsnps"))
+    segments[, .SD, .SDcols = c("chr", "startpos", "endpos", "width", "Nsnps")]
+}

@@ -33,7 +33,7 @@ qsbeta <- function(p, a, b, w) {
 #' Random variates function for symmetrical beta mixture
 #' @export
 rsbeta <- function(n, a, b, w) {
-    c(rbeta(n*w, a, b), rbeta(n*(1-w), b, a))
+    sample(c(rbeta(floor(n*w), a, b), rbeta(n - floor(n*w), b, a)))
 }
 
 
@@ -137,5 +137,23 @@ est_sbeta <- function(data, startval = c(1, 10)) {
     grad <- llsbeta_deriv_wrt_a(data, a, b, 0.5)
     i <- y - grad*a
     abline(i, grad)
+}
+
+#' Estimate parameters of symmetrical Beta distribution by maximum likelihood
+#' (assumes mixture weight fixed to 0.5)
+#' @export
+est_sbeta2 <- function(data, startval = c(1, 10, 0.5)) {
+    objective <- function(param) {
+        -llsbeta(data, param[1], param[2], param[3])
+    }
+
+    gradient <- function(param) {
+        -c(
+            llsbeta_deriv_wrt_a(data, param[1], param[2], param[3]),
+            llsbeta_deriv_wrt_b(data, param[1], param[2], param[3]),
+            llsbeta_deriv_wrt_w(data, param[1], param[2], param[3])
+        )
+    }
+    optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01, 0.01))
 }
 
