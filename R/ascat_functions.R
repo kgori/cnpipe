@@ -501,3 +501,24 @@ disjoin_ascat_segments <- function(datatable) {
     setkey(res, chr, startpos, endpos)
     return(res)
 }
+
+#' Post-process a disjointed segments list to remove segments that cover 0 SNPs
+#' Adds a column, Nsnps, the number of SNPs covered by each segment
+#' @param snp_list (data.table) A list of SNPs with columns chr (chromosome),
+#' startpos (SNP position) and endpos (=startpos). Other columns can be present,
+#' but ignored.
+#' @param segments (data.table) A list of segments with columns chr (chromosome),
+#' startpos and endpos (start and end positions of the segments)
+filter_segments_by_snplist <- function(snp_list, segments) {
+    has_cols <- function(dt, names) {
+        all(intersect(colnames(dt), names) == names)
+    }
+
+    stopifnot(has_cols(snp_list, c("chr", "startpos", "endpos")))
+    stopifnot(has_cols(segments, c("chr", "startpos", "endpos")))
+
+    setkey(segments, chr, startpos, endpos)
+    do.call(setkey, append(list(snp_list), as.list(key(segments))))
+
+    foverlaps(snp_list, segments, nomatch=0L)[, .(Nsnps = .N), by = .(chr, startpos, endpos)]
+}
