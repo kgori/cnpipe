@@ -519,8 +519,12 @@ filter_segments_by_snplist <- function(snp_list, segments) {
     stopifnot(has_cols(snp_list, c("chr", "startpos", "endpos")))
     stopifnot(has_cols(segments, c("chr", "startpos", "endpos")))
 
+    if(!has_cols(segments, c("width"))) {
+        segments[, width := endpos - startpos + 1]
+    }
+
     setkey(segments, chr, startpos, endpos)
     do.call(setkey, append(list(snp_list), as.list(key(segments))))
 
-    foverlaps(snp_list, segments, nomatch=0L)[, .(Nsnps = .N), by = .(chr, startpos, endpos)]
+    foverlaps(snp_list, segments, nomatch=0L)[, .(Nsnps = .N), by = .(chr, startpos, endpos, width)]
 }
