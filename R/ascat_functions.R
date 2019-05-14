@@ -509,6 +509,8 @@ disjoin_ascat_segments <- function(datatable) {
 #' but ignored.
 #' @param segments (data.table) A list of segments with columns chr (chromosome),
 #' startpos and endpos (start and end positions of the segments)
+#' @importFrom "data.table" setkey key foverlaps
+#' @export
 filter_segments_by_snplist <- function(snp_list, segments) {
     has_cols <- function(dt, names) {
         all(intersect(colnames(dt), names) == names)
