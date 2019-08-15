@@ -490,6 +490,9 @@ disjoin_ascat_segments <- function(datatable) {
         unique(foverlaps(dt, adj, nomatch=0L, minoverlap=1L),
                by = c("startpos", "endpos"))[, -c("i.startpos", "i.endpos")]
     }
+    # Data table complains that .SD is locked if startpos/endpos are integers
+    datatable[, c("startpos", "endpos") := lapply(.SD, as.numeric), .SDcols = c("startpos", "endpos")]
+
     res <- datatable[, .disjoin.chr(.SD), by = chr, .SDcols = c("startpos", "endpos")]
 
     # Set sort order
