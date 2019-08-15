@@ -528,3 +528,37 @@ filter_segments_by_snplist <- function(snp_list, segments) {
 
     foverlaps(snp_list, segments, nomatch=0L)[, .(Nsnps = .N), by = .(chr, startpos, endpos, width)]
 }
+
+#' Copied from ASCAT
+medianFilter <- function (x, k)
+{
+    n <- length(x)
+    filtWidth <- 2 * k + 1
+    if (filtWidth > n) {
+        if (n == 0) {
+            filtWidth <- 1
+        }
+        else if (n%%2 == 0) {
+            filtWidth <- n - 1
+        }
+        else {
+            filtWidth <- n
+        }
+    }
+    runMedian <- runmed(x, k = filtWidth, endrule = "median")
+    return(runMedian)
+}
+
+#' Copied from ASCAT
+madWins <- function (x, tau, k)
+{
+    xhat <- medianFilter(x, k)
+    d <- x - xhat
+    SD <- mad(d)
+    z <- tau * SD
+    xwin <- xhat + psi(d, z)
+    outliers <- rep(0, length(x))
+    outliers[x > xwin] <- 1
+    outliers[x < xwin] <- -1
+    return(list(ywin = xwin, sdev = SD, outliers = outliers))
+}
