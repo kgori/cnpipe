@@ -390,6 +390,7 @@ replace_na <- function(val, default) {
 #' @export
 simulated_vaf <- function(samplesize, depth, ta, tb, ha, hb, purity, tploidy = 2, hploidy = 2, balance = 0) {
     stopifnot(purity >= 0 & purity <= 1)
+    stopifnot(balance >= 0 & balance <= 1)
 
     # Adjust the sequencing depth of this region from the average `depth`
     # based on this region's total copy number and the tumour and host average ploidies
@@ -411,7 +412,7 @@ simulated_vaf <- function(samplesize, depth, ta, tb, ha, hb, purity, tploidy = 2
     expected_vaf <- ((expected_tb+expected_hb) / (expected_ta+expected_tb+expected_ha+expected_hb))
 
     # Rebalance the SNPs onto major and minor alleles
-    ix <- seq(1, balance * length(vaf))
+    ix <- sample(c(TRUE, FALSE), length(vaf), replace = TRUE, prob = c(balance, 1-balance))
     vaf[ix] <- 1 - vaf[ix]
     list(data = vaf, expectation = expected_vaf)
 }
