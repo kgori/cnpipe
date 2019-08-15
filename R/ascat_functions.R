@@ -396,10 +396,10 @@ simulated_vaf <- function(samplesize, depth, ta, tb, ha, hb, purity, tploidy = 2
     region_depth <- (((ta+tb) / tploidy) * purity + (1 - purity) * ((ha+hb) / hploidy)) * depth
 
     # Work out the expected number of reads based on this region's depth
-    expected_ta <- replace_na(region_depth * purity * ta / (ta+tb), 0)
-    expected_tb <- replace_na(region_depth * purity * tb / (ta+tb), 0)
-    expected_ha <- replace_na(region_depth * (1-purity) * ha / (ha+hb), 0)
-    expected_hb <- replace_na(region_depth * (1-purity) * hb / (ha+hb), 0)
+    expected_ta <- replace_na(region_depth * purity * ta, 0)
+    expected_tb <- replace_na(region_depth * purity * tb, 0)
+    expected_ha <- replace_na(region_depth * (1-purity) * ha, 0)
+    expected_hb <- replace_na(region_depth * (1-purity) * hb, 0)
 
     # Sample read counts from a Poisson distribution
     nta <- rpois(samplesize, expected_ta + 0.01)
