@@ -58,16 +58,18 @@ undo_scale_to_unit <- function(v, undo_params) {
 #' Can be used produce a segment threshold, above which a SNP is likely to have been
 #' HET in the founder.
 #' @param purity Estimated tumour purity (real value [0..1])
-#' @param logr Log (base-2) of the read depth ratio between tumour and normal (real value)
-#' @param ploidy Estimated overall tumour ploidy (real value)
+#' @param logr (numeric) Log (base-2) of the read depth ratio between tumour and normal
+#' @param ploidy (numeric) Estimated overall tumour ploidy
 #' @return The estimated VAF, had the original state of the SNP been homozygous
 #' (real value [0..1]). NB: This is hypothetical, not a prediction.
 #' @examples
 #' expected_loh_vaf(0.817, c(1.713900, 1.607939, 1.629899, 1.570724, 1.666647), 2.114)
-#' # [1] 0.02595942 0.02788265 0.02747302 0.02859042 0.02680059
+#' # [1] 0.02665127 0.02868239 0.02824911 0.02943189 0.02753864
 #' @export
 expected_loh_vaf <- function(purity, logr, ploidy) {
-    (1 - purity) / ((1 - purity) + 2^logr * (2 * (1 - purity) + purity * ploidy))
+    #(1 - purity) / ((1 - purity) + 2^logr * (2 * (1 - purity) + purity * ploidy))
+    totalcn <- calc_total_copynumber(logr, purity, ploidy)
+    (1 - purity) / (pmax(0, totalcn) * purity + 2 * (1 - purity))
 }
 
 #' Returns segmented logR using pcf from the copynumber package

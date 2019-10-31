@@ -417,7 +417,7 @@ simulated_vaf <- function(samplesize, depth, ta, tb, ha, hb, purity, tploidy = 2
     list(data = vaf, expectation = expected_vaf)
 }
 
-#' Simulate logr according to certain parameters
+#' Ssimulate logr according to certain parameters
 #' @export
 simulated_logr <- function(samplesize, depth, tn, hn, purity, tploidy = 2, hploidy = 2) {
     stopifnot(purity >= 0 & purity <= 1)
@@ -475,7 +475,7 @@ annotate_ascat_segments <- function(breaks) {
 }
 
 
-#' Create a new table of segments that inlcudes every breakpoint from every sample in
+#' Create a new table of segments that includes every breakpoint from every sample in
 #' `datatable`, where datatable = ascat_result$segments
 #' @importFrom "stringr" str_sort
 #' @export

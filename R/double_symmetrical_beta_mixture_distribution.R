@@ -129,6 +129,7 @@ finite_diff <- function(fn, params, param_index, h = 0.0001) {
 
 #' Estimate parameters of symmetrical Beta distribution by maximum likelihood
 #' (assumes mixture weight fixed to 0.5)
+#' @importFrom "nloptr" nl.opts
 #' @export
 est_doublesbeta <- function(data, startval = c(1, 10, 1, 10, 0.5, 0.5, 0.5)) {
     objective <- function(param) {

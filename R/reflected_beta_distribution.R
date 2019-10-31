@@ -84,3 +84,20 @@ est_reflbeta <- function(data, startval = c(1, 10)) {
     i <- y - grad*x
     abline(i, grad)
 }
+
+# Likelihood ratio test of hypothesis that data comes from an off-centre
+# reflected beta distribution, rather than a beta distribution centred on 0.5.
+# Returns the central tendency of the distribution
+reflbeta_mirrortest <- function(data, siglevel = 0.95) {
+    result <- suppressMessages(est_reflbeta(mirror(data)))
+    llalt <- -result$value
+    llnul <- ll_reflbeta(c(mean(result$par), mean(result$par)),data)
+    crit <- qchisq(siglevel, 1)
+    if (2*(llalt-llnul) > crit) {
+        mu <- mirror(result$par[1] / sum(result$par))
+    }
+    else {
+        mu <- 0.5
+    }
+    mu
+}
