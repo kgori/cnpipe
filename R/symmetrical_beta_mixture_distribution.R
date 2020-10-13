@@ -154,6 +154,7 @@ est_sbeta2 <- function(data, startval = c(1, 10, 0.5)) {
             llsbeta_deriv_wrt_w(data, param[1], param[2], param[3])
         )
     }
-    optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01, 0.01))
+    optim(startval, objective, gradient, method = "L-BFGS-B", lower = c(0.01, 0.01, 0.01),
+          upper = c(Inf, Inf, 0.99))
 }
 

@@ -132,6 +132,53 @@ find_mle <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, h
           hessian = hess)
 }
 
+#' Helper function to find the maximum likelihood estimate of P(H|A) and P(H|B)
+rcpp_module_find_mle <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, hess = FALSE) {
+    pseudocount <- 0.5
+    n <- tumour_ref + pseudocount
+    v <- tumour_alt + pseudocount
+    a <- host_ref + pseudocount
+    b <- host_alt + pseudocount
+    r <- exp(logr)
+
+    l <- new(Likelihood, n, v, r, purity, a, b)
+
+    objective <- function(x) {
+        -l$loglik(x[1], x[2])
+    }
+
+    gradient <- function(x) {
+        -l$dloglik(x[1], x[2])
+    }
+
+    optim(c(0.5, 0.5), objective, gr = gradient, method = "L-BFGS-B",
+          lower = c(1e-6, 1e-6),
+          upper = c(1 - 1e-6, 1 - 1e-6),
+          hessian = hess)
+}
+
+#' Helper function to find the maximum likelihood estimate of P(H|A) and P(H|B)
+rcpp_find_mle <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, hess = FALSE) {
+    pseudocount <- 0.5
+    n <- tumour_ref + pseudocount
+    v <- tumour_alt + pseudocount
+    a <- host_ref + pseudocount
+    b <- host_alt + pseudocount
+    r <- exp(logr)
+
+    objective <- function(x) {
+        -rcpp_loglik(x[1], x[2], n, v, r, purity, a, b)
+    }
+
+    gradient <- function(x) {
+        -rcpp_dloglik(x[1], x[2], n, v, r, purity, a, b)
+    }
+
+    optim(c(0.5, 0.5), objective, gr = gradient, method = "L-BFGS-B",
+          lower = c(1e-6, 1e-6),
+          upper = c(1 - 1e-6, 1 - 1e-6),
+          hessian = hess)
+}
 #' Estimate the host and tumour components from a host-contaminated tumour sample
 #' @param tumour_ref number of REF reads observed in host-contaminated tumour, at current site
 #' @param tumour_alt number of ALT reads observed in host-contaminated tumour, at current site
@@ -288,3 +335,60 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
     paste(.v.get_sequence(refbase, altbase, tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, minreads, minvaf), collapse = "")
 }
 
+
+
+### Fast alternatives
+
+#' Fast approximate alternative to estimate_tumour_vaf
+#' @param tlogr Tumour sample estimated logR
+#' @param purity Tumour sample estimated purity
+#' @param tvaf Tumour sample uncorrected VAF
+#' @param hvaf Host sample VAF
+#' @export
+fast_estimate_tumour_vaf <- function(tlogr, purity, tvaf, hvaf) {
+    r <- 2^(tlogr)
+    ph <- (1-purity) / (r * purity + (1 - purity))
+    clamp((tvaf - ph * hvaf) / (1-ph), 0, 1)
+}
+
+#' Fast approximate alternative to convert_to_het_host
+#' @param readdepth Tumour sample total read count
+#' @param tlogr Tumour sample estimated logR
+#' @param purity Tumour sample estimated purity
+#' @param tvaf Tumour sample uncorrected VAF
+#' @param hvaf Host sample VAF
+#' @export
+fast_convert_to_het_host <- function(readdepth, tlogr, purity, tvaf, hvaf) {
+    r <- 2^(tlogr)
+    ph <- (1-purity) / (r * purity + (1 - purity))
+    pure_tumour_vaf <- clamp((tvaf - ph * hvaf) / (1-ph),0,1)
+    nh_alt <- ph * readdepth / 2
+    nt_alt <- readdepth * (1 - ph) * pure_tumour_vaf
+    clamp((nh_alt + nt_alt) / readdepth, 0, 1)
+}
+
+#' Fast estimation of contingency table of deconvoluted tumour/host read counts
+#' @param readdepth Tumour sample total read count
+#' @param tlogr Tumour sample estimated logR
+#' @param purity Tumour sample estimated purity
+#' @param tvaf Tumour sample uncorrected VAF
+#' @param hvaf Host sample VAF
+#' @export
+fast_contingency_table <- function(readdepth, tlogr, purity, tvaf, hvaf) {
+    r <- 2^(tlogr)
+    ph <- (1-purity) / (r * purity + (1 - purity))
+    pure_tumour_vaf <- clamp((tvaf - ph * hvaf) / (1-ph),0,1)
+    nh <- ph * readdepth
+    nt <- readdepth * (1 - ph)
+    m <- matrix(nrow=3,ncol=3)
+    m[1,1] <- nt * pure_tumour_vaf
+    m[2,1] <- nt * (1 - pure_tumour_vaf)
+    m[3,1] <- nt
+    m[1,2] <- nh * hvaf
+    m[2,2] <- nh * (1 - hvaf)
+    m[3,2] <- nh
+    m[1,3] <- readdepth * tvaf
+    m[2,3] <- readdepth * (1-tvaf)
+    m[3,3] <- readdepth
+    m
+}

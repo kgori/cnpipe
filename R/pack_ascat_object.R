@@ -6,6 +6,34 @@ extract_sample_name <- function(dt) {
     dt[1, "samplename"][[1]]
 }
 
+#' Code from ASCAT
+medianFilter <- function (x, k) {
+    n <- length(x)
+    filtWidth <- 2 * k + 1
+    if (filtWidth > n) {
+        if (n == 0) {
+            filtWidth <- 1
+        }
+        else if (n%%2 == 0) {
+            filtWidth <- n - 1
+        }
+        else {
+            filtWidth <- n
+        }
+    }
+    runMedian <- runmed(x, k = filtWidth, endrule = "median")
+    return(runMedian)
+}
+
+#' Code from ASCAT
+getMad <- function (x, k = 25) {
+    x <- x[x != 0]
+    runMedian <- medianFilter(x, k)
+    dif <- x - runMedian
+    SD <- mad(dif)
+    return(SD)
+}
+
 #' Helper function to convert a tall data.table of genotyped breakpoints
 #' into segment intervals. ('Tall' means the data for each sample
 #' is stacked vertically (melted), as opposed to horizontally, in
@@ -80,12 +108,12 @@ pack_tumour_logr <- function(sample_data_list) {
 
 #' Output: data.frame [Nsites * Nsamples]
 pack_tumour_baf <- function(sample_data_list) {
-    df <- data.frame(sample_data_list[[1]][, "T_corrected_vaf"])
+    df <- data.frame(sample_data_list[[1]][(het), "T_corrected_vaf"])
     colnames(df) <- extract_sample_name(sample_data_list[[1]])
     if (length(sample_data_list) > 1) {
         for (i in 2:length(sample_data_list)) {
             sample_data <- sample_data_list[[i]]
-            df <- cbind(df, sample_data[, "T_corrected_vaf"])
+            df <- cbind(df, sample_data[(het), "T_corrected_vaf"])
             colnames(df)[i] <- extract_sample_name(sample_data)
         }
     }
@@ -100,7 +128,7 @@ pack_tumour_logr_segmented <- function(sample_data_list, segmentation) {
         samplename <- extract_sample_name(sample_data)
         sample_data[, c("chr", "startpos", "endpos") := .(CHROM, POS, POS)]
         setkeyv(sample_data, key(segmentation))
-        logr_means <- foverlaps(sample_data, segmentation)[, mean_logR := mean(T_logR), by = .(CHROM, startpos, endpos)][, mean_logR]
+        logr_means <- unique(foverlaps(sample_data, segmentation), by = c("CHROM", "POS", "REF", "ALT"))[, mean_logR := mean(T_logR), by = .(CHROM, startpos, endpos)][, mean_logR]
         ret[[samplename]] <- logr_means
     }
     # Don't coerce colnames
@@ -119,10 +147,10 @@ pack_tumour_baf_segmented <- function(sample_data_list, segmentation) {
         sample_data[, c("chr", "startpos", "endpos") := .(CHROM, POS, POS)]
         samplename <- extract_sample_name(sample_data)
         setkeyv(sample_data, key(segmentation))
-        ol <- foverlaps(sample_data, segmentation)
+        ol <- foverlaps(sample_data[(het)], segmentation)
 
-        sd2 <- ol[, .(sd2 = getMad(T_corrected_vaf2)), by = .(chr, startpos, endpos)][, sqrt(mean(sd2^2))]
-        mutab <- ol[, .(mu = mean(abs(mirror(T_corrected_vaf2) - 0.5))), by = .(chr, startpos, endpos)]
+        sd2 <- ol[, .(sd2 = getMad(T_corrected_vaf)), by = .(chr, startpos, endpos)][, sqrt(mean(sd2^2))]
+        mutab <- ol[, .(mu = mean(abs(mirror(T_corrected_vaf) - 0.5))), by = .(chr, startpos, endpos)]
         mutab[sqrt(sd2^2+mu^2) < 2 * sd2, mu := 0]
 
         values <- ol[mutab, mean_vaf := mirror(mu + 0.5), on = .(chr, startpos, endpos)][, mean_vaf]
@@ -143,7 +171,7 @@ pack_germline_logr <- function(sample_data_list) {
 #' Output: data.frame [Nsites * Nsamples]
 pack_germline_baf <- function(sample_data_list) {
     ret <- as.data.frame(lapply(sample_data_list, function(sample_data) {
-        vals <- rep(0.5, sample_data[,.N])
+        vals <- rep(0.5, sample_data[(het),.N])
         vals[1] <- 0
         vals
     }))
@@ -193,6 +221,18 @@ pack_sexchromosomes <- function() {
     c('X', 'Y')
 }
 
+#' Finds adjacent segments within a sample that have the same
+#' end position and start position, and moves the end position
+#' back by one unit.
+no_touching <- function(segmentation) {
+    fixed_seg <- copy(segmentation)
+    fixed_seg[, original_sortorder := .I]
+    setorder(fixed_seg, sample, chr, startpos, endpos)
+    fixed_seg[endpos == shift(startpos, type="lead"), endpos := endpos - 1]
+    setorder(fixed_seg, original_sortorder)
+    fixed_seg[, original_sortorder := NULL]
+    fixed_seg
+}
 
 #' An ASCAT segmentation object is a list of length 14 containing:
 #' 1  $Tumor_LogR
@@ -211,11 +251,12 @@ pack_sexchromosomes <- function() {
 #' 14 $failedarrays
 #' @export
 pack_ascat <- function(data, segmentation) {
+    seg <- no_touching(segmentation)
     obj <- list()
     obj$Tumor_LogR <- pack_tumour_logr(data)
     obj$Tumor_BAF <- pack_tumour_baf(data)
-    obj$Tumor_LogR_segmented <- pack_tumour_logr_segmented(data, segmentation)
-    obj$Tumor_BAF_segmented <- pack_tumour_baf_segmented(data, segmentation)
+    obj$Tumor_LogR_segmented <- pack_tumour_logr_segmented(data, seg)
+    obj$Tumor_BAF_segmented <- pack_tumour_baf_segmented(data, seg)
     obj$Germline_LogR <- pack_germline_logr(data)
     obj$Germline_BAF <- pack_germline_baf(data)
     obj$SNPpos <- pack_snppos(data[[1]])
@@ -241,8 +282,8 @@ pack_tumour_baf_segmented_plots <- function(sample_data_list, segmentation) {
         ol <- foverlaps(sample_data, segmentation)
 
         # Here use the ASCAT heuristic for solving double-banding
-        sd2 <- ol[, .(sd2 = getMad(mirror(T_corrected_vaf2))), by = .(chr, startpos, endpos)][, sqrt(mean(sd2^2))]
-        mutab <- ol[, .(mu = mean(abs(mirror(T_corrected_vaf2) - 0.5))), by = .(chr, startpos, endpos)]
+        sd2 <- ol[, .(sd2 = getMad(mirror(T_corrected_vaf))), by = .(chr, startpos, endpos)][, sqrt(mean(sd2^2))]
+        mutab <- ol[, .(mu = mean(abs(mirror(T_corrected_vaf) - 0.5))), by = .(chr, startpos, endpos)]
         mutab[sqrt(sd2^2+mu^2) < 2 * sd2, mu := 0]
 
         # debug - plot
@@ -257,14 +298,14 @@ pack_tumour_baf_segmented_plots <- function(sample_data_list, segmentation) {
         setkeyv(sample_data, key(segmentation))
         ol <- foverlaps(sample_data, segmentation)
 
-        sd2 <- ol[, .(sd2 = getMad(T_corrected_vaf2)), by = .(chr, startpos, endpos)][, sqrt(mean(sd2^2))]
-        mutab <- ol[, .(mu = mean(abs(mirror(T_corrected_vaf2) - 0.5))), by = .(chr, startpos, endpos)]
+        sd2 <- ol[, .(sd2 = getMad(T_corrected_vaf)), by = .(chr, startpos, endpos)][, sqrt(mean(sd2^2))]
+        mutab <- ol[, .(mu = mean(abs(mirror(T_corrected_vaf) - 0.5))), by = .(chr, startpos, endpos)]
         mutab[sqrt(sd2^2+mu^2) < 2 * sd2, mu := 0]
 
         # debug - plot
         ol[mutab, mu := mirror(mu + 0.5), on = .(chr, startpos, endpos)]
         segs = unique(ol[, .(startI = min(I), endI = max(I), mu), by = .(chr, startpos, endpos)])
-        plot(ol[chr=="1", .(I, T_corrected_vaf2)], pch = 20, col = scales::alpha("red", 0.5), cex = .5, main="after - quick fix")
+        plot(ol[chr=="1", .(I, T_corrected_vaf)], pch = 20, col = scales::alpha("red", 0.5), cex = .5, main="after - quick fix")
         segments(segs[chr=="1", startI], segs[chr=="1", mu], segs[chr=="1", endI], col = "green", lwd = 4, lend = "butt")
         segments(segs[chr=="1", startI], segs[chr=="1", 1-mu], segs[chr=="1", endI], col = "green", lwd = 4, lend = "butt")
 
@@ -275,8 +316,8 @@ pack_tumour_baf_segmented_plots <- function(sample_data_list, segmentation) {
         rm(segs)
 
         tester <- ol[chr=="1"]
-        tester[, mu:= dotest(T_corrected_vaf2), by = .(chr, startpos, endpos)]
-        plot(tester[chr=="1", .(I, T_corrected_vaf2)], pch = 20, col = scales::alpha("red", 0.5), cex = .5, main="after - statistical fix")
+        tester[, mu:= dotest(T_corrected_vaf), by = .(chr, startpos, endpos)]
+        plot(tester[chr=="1", .(I, T_corrected_vaf)], pch = 20, col = scales::alpha("red", 0.5), cex = .5, main="after - statistical fix")
         segs = unique(tester[, .(startI = min(I), endI = max(I), mu), by = .(chr, startpos, endpos)])
         segments(segs[chr=="1", startI], segs[chr=="1", mu], segs[chr=="1", endI], col = "green", lwd = 4, lend = "butt")
         segments(segs[chr=="1", startI], segs[chr=="1", 1-mu], segs[chr=="1", endI], col = "green", lwd = 3, lend = "butt")

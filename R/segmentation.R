@@ -1,6 +1,6 @@
-#' Implementation of PCF algorithm from 
+#' Implementation of PCF algorithm from
 #' Copynumber: Efficient algorithms for
-#' single and multi-track copy number 
+#' single and multi-track copy number
 #' segmentation
 #' (not very efficient version)
 #' example:
@@ -14,6 +14,7 @@ pcf <- function(y, gamma = 40) {
     eprev = e0
     gamma = gamma * var(y)
     t <- rep(0, p) # backtrack
+    logdebug(paste0("a0=",a0," e0=",e0," aprev=",aprev," eprev=", eprev," gamma=",gamma))
     for (k in seq(1, p)) {
         anow <- c(aprev, 0) + y[k]
         dnow <- anow^2 / (1:k - k - 1)
@@ -21,10 +22,11 @@ pcf <- function(y, gamma = 40) {
         min_index <- which.min(score)
         enow <- c(eprev, score[min_index])
         t[k] <- min_index
+        loginfo(paste0("anow=",anow," enow=",enow," dnow=", dnow," score=",score))
         aprev <- anow
         eprev <- enow
     }
-    
+
     segstarts <- unique(t)
     segends <- c(segstarts[2:length(segstarts)]-1, p)
     data.frame(startpos=segstarts, endpos=segends)
