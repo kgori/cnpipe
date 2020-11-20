@@ -4,8 +4,7 @@
 \alias{estimate_tumour_vaf}
 \title{Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if there were no host contamination}
 \usage{
-estimate_tumour_vaf(tumour_ref, tumour_alt, host_ref, host_alt, logr,
-  purity)
+estimate_tumour_vaf(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity)
 }
 \description{
 Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if there were no host contamination

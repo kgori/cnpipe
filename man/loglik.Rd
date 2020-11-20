@@ -21,24 +21,9 @@ loglik(PHa, PHb, n, v, r, pur, a, b)
 
 \item{a}{= Expected number of host reads}
 
-\item{b}{= Expected number of tumour reads
-Log-likelihood for deconvoluting host and tumour read counts}
+\item{b}{= Expected number of tumour reads}
 
 \item{logr}{= log ratio of tumour depth to host depth}
-
-\item{PHa}{= parameter probability read is Host given read is A (P(H|A))}
-
-\item{PHb}{= parameter probability read is Host given read is B (P(H|B))}
-
-\item{n}{= normal read count in tumour}
-
-\item{v}{= variant read count in tumour}
-
-\item{pur}{= tumour purity}
-
-\item{a}{= Expected number of host reads}
-
-\item{b}{= Expected number of tumour reads}
 }
 \description{
 Log-likelihood for deconvoluting host and tumour read counts

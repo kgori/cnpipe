@@ -4,8 +4,7 @@
 \alias{convert_to_het_host}
 \title{Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous}
 \usage{
-convert_to_het_host(tumour_ref, tumour_alt, host_ref, host_alt, logr,
-  purity)
+convert_to_het_host(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity)
 }
 \description{
 Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous

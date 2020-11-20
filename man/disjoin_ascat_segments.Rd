@@ -2,12 +2,12 @@
 % Please edit documentation in R/ascat_functions.R
 \name{disjoin_ascat_segments}
 \alias{disjoin_ascat_segments}
-\title{Create a new table of segments that inlcudes every breakpoint from every sample in
+\title{Create a new table of segments that includes every breakpoint from every sample in
 `datatable`, where datatable = ascat_result$segments}
 \usage{
 disjoin_ascat_segments(datatable)
 }
 \description{
-Create a new table of segments that inlcudes every breakpoint from every sample in
+Create a new table of segments that includes every breakpoint from every sample in
 `datatable`, where datatable = ascat_result$segments
 }

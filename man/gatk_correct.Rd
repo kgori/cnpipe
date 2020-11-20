@@ -4,7 +4,7 @@
 \alias{gatk_correct}
 \title{Do tangent normalisation on a tumour sample}
 \usage{
-gatk_correct(data, decomp, verbose = TRUE)
+gatk_correct(data, decomp, n_singular_values, verbose = TRUE)
 }
 \description{
 Do tangent normalisation on a tumour sample

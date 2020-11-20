@@ -6,9 +6,15 @@
 host = hom if (coverage ≥ 10, as above) and 0 reads ref | alt
 host = het if ≥ 3 reads for both ALT and REF & .25 ≤ BAF ≤ .75}
 \usage{
-dep_calc_combined_genotype(h_ref, h_alt, t_ref, t_alt,
-  het_baf_interval = c(0.25, 0.75), hom_baf_boundaries = c(0.1, 0.9),
-  min_reads = 3)
+dep_calc_combined_genotype(
+  h_ref,
+  h_alt,
+  t_ref,
+  t_alt,
+  het_baf_interval = c(0.25, 0.75),
+  hom_baf_boundaries = c(0.1, 0.9),
+  min_reads = 3
+)
 }
 \arguments{
 \item{data}{= data frame / table with columns 'h_ref', 'h_alt', 't_ref'

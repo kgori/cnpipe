@@ -2,11 +2,10 @@
 % Please edit documentation in R/ascat_functions.R
 \name{simulated_logr}
 \alias{simulated_logr}
-\title{Simulate logr according to certain parameters}
+\title{Ssimulate logr according to certain parameters}
 \usage{
-simulated_logr(samplesize, depth, tn, hn, purity, tploidy = 2,
-  hploidy = 2)
+simulated_logr(samplesize, depth, tn, hn, purity, tploidy = 2, hploidy = 2)
 }
 \description{
-Simulate logr according to certain parameters
+Ssimulate logr according to certain parameters
 }

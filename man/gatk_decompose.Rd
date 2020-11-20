@@ -4,8 +4,13 @@
 \alias{gatk_decompose}
 \title{Obtain read count normalisation info from a panel of normals}
 \usage{
-gatk_decompose(data, filter1 = 0.1, filter2 = 0.05, filter3 = 0.001,
-  nsvs = 20, verbose = TRUE)
+gatk_decompose(
+  data,
+  filter1 = 0.1,
+  filter2 = 0.05,
+  filter3 = 0.001,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{data}{(data.table / data.frame) Table of read counts, with columns representing samples

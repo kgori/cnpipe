@@ -4,8 +4,15 @@
 \alias{deconvolute}
 \title{Estimate the host and tumour components from a host-contaminated tumour sample}
 \usage{
-deconvolute(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity,
-  plot = FALSE)
+deconvolute(
+  tumour_ref,
+  tumour_alt,
+  host_ref,
+  host_alt,
+  logr,
+  purity,
+  plot = FALSE
+)
 }
 \arguments{
 \item{tumour_ref}{number of REF reads observed in host-contaminated tumour, at current site}

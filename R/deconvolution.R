@@ -339,56 +339,137 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
 
 ### Fast alternatives
 
-#' Fast approximate alternative to estimate_tumour_vaf
-#' @param tlogr Tumour sample estimated logR
-#' @param purity Tumour sample estimated purity
-#' @param tvaf Tumour sample uncorrected VAF
+
+# Refactor...
+#' Fast deconvolution of read count contingency table
+#' @param total_readdepth Tumour sample total read depth
+#' @param alt_readdepth Tumour sample alt read depth
+#' @param logr Tumour sample logR
 #' @param hvaf Host sample VAF
-#' @export
-fast_estimate_tumour_vaf <- function(tlogr, purity, tvaf, hvaf) {
-    r <- 2^(tlogr)
-    ph <- (1-purity) / (r * purity + (1 - purity))
-    clamp((tvaf - ph * hvaf) / (1-ph), 0, 1)
+#' @param purity Estimated purity of tumour sample
+.estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
+    # Aim: find values for the empty cells (a), (b), (c), (d), (e), (f)
+    # in the read count contingency table below. A and T are observed values, and R = T - A.
+    # The other values need to be estimated, subject to the constraint that they are all
+    # non-negative.
+    # (c) (referred to throughout as variable K) can be estimated as T*p_1, where p_1 is the
+    # probability that a read came from host material in the mixed tumour-host source. p_1
+    # is estimated using the tumour sample's logR (logr), and the host sample's VAF (hvaf).
+    # (b) (variable L) is estimated from (c) as K*p_2, where p_2 is the probability that
+    # a host-derived read carries the Alt allele, not the Ref allele. p_2 is equal to hvaf.
+    # As the table has 2 degrees of freedom, once values are estimated for (b) and (c), the
+    # other missing values are filled in trivially.
+
+    # Contingency table :
+    #'         |  Ref  |  Alt  |
+    #'  -------|-------|-------|-------
+    #'   Host  |  (a)  |  (b)  |  (c)
+    #'  Tumour |  (d)  |  (e)  |  (f)
+    #'  -------|-------|-------|-------
+    #'         |   R   |   A   |   T
+
+    r <- 2^logr
+    T <- total_readdepth
+    A <- alt_readdepth
+
+    # probability that a read comes from the host (P(R=H))
+    p_1 <- (1 - purity) / (r * purity + 1 - purity)
+
+    # probability that a host read is an Alt allele (P(R=A|R=H))
+    p_2 <- hvaf
+
+    # Estimate K (number of host reads) and L (number of host reads that are Alt),
+    # subject to the constraints A - L >= 0, and (T - K) - (A - L) >= 0
+
+    K <- T*p_1
+    L <- K*p_2
+
+    # If constraints are broken, then find the optimal least squares solution to the
+    # constrained equation, using Lagrangian multipliers.
+    # Least-squares estimate for K and L:
+    # f(K, L) = (K - T*p_1)^2 + (L - K*p_2)
+    #
+    # Constraints:
+    # g1(L, a) => A - L - a^2 = 0
+    # g2(K, L, b) => (T-K) - (A-L) - b^2 = 0
+    #
+    # Augmented Lagrangian equation:
+    # F(K, L, a, b, λ1, λ2) = f(K, L) + λ1*g1(L, a) + λ2*g2(K, L, b)
+    #
+    # Optimal constrained solution obtained when all derivatives of F are zero.
+
+    # Broken constraint 1: Too many Alt reads in the host
+    ix <- (L > A)
+
+    K[ix] <- (A[ix]*p_2[ix] + T[ix]*p_1[ix]) / (p_2[ix]^2 + 1)
+    L[ix] <- A[ix]
+
+    # Broken constraint 2: VAF out of bounds [ignore if T==0 - these will give NA in the index, which breaks]
+    iy <- (T > 0) & (((A-L) / (T-K)) > 1)
+    denom <- (p_2[iy]^2 - 2 * p_2[iy] + 2)
+    K[iy] <- (A[iy] * (p_2[iy] - 1) + T[iy] * (p_1[iy] - p_2[iy] + 1)) / denom
+    L[iy] <- (A[iy] * (p_2[iy]^2 - p_2[iy] + 1) + T[iy] * (p_1[iy] - p_2[iy]^2 + p_2[iy] - 1) ) / denom
+
+    # Contingency table :
+    #'     |  Ref  |  Alt  |
+    #'  ---|-------|-------|-------
+    #'   H |  K-L  |   L   |   K
+    #'   T |T-K-A+L|  A-L  |  T-K
+    #'  ---|-------|-------|-------
+    #'     |   R   |   A   |   T
+
+    return(list(K=K, L=L))
 }
 
-#' Fast approximate alternative to convert_to_het_host
-#' @param readdepth Tumour sample total read count
-#' @param tlogr Tumour sample estimated logR
-#' @param purity Tumour sample estimated purity
-#' @param tvaf Tumour sample uncorrected VAF
+#' Fast approximate estimate of pure_tumour_vaf from a mixed sample
+#' @param total_readdepth Tumour sample total read depth
+#' @param alt_readdepth Tumour sample alt read depth
+#' @param logr Tumour sample logR
 #' @param hvaf Host sample VAF
+#' @param purity Estimated purity of tumour sample
 #' @export
-fast_convert_to_het_host <- function(readdepth, tlogr, purity, tvaf, hvaf) {
-    r <- 2^(tlogr)
-    ph <- (1-purity) / (r * purity + (1 - purity))
-    pure_tumour_vaf <- clamp((tvaf - ph * hvaf) / (1-ph),0,1)
-    nh_alt <- ph * readdepth / 2
-    nt_alt <- readdepth * (1 - ph) * pure_tumour_vaf
-    clamp((nh_alt + nt_alt) / readdepth, 0, 1)
+fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
+    result <- .estimate_contingency_table(total_readdepth, alt_readdepth, logr, hvaf, purity)
+    T <- total_readdepth
+    A <- alt_readdepth
+    vaf <- (A-result$L) / (T-result$K)
+    return (vaf)
 }
 
-#' Fast estimation of contingency table of deconvoluted tumour/host read counts
-#' @param readdepth Tumour sample total read count
-#' @param tlogr Tumour sample estimated logR
-#' @param purity Tumour sample estimated purity
-#' @param tvaf Tumour sample uncorrected VAF
+#' Fast approximate estimate of pure_tumour_vaf from a mixed sample
+#' @param total_readdepth Tumour sample total read depth
+#' @param alt_readdepth Tumour sample alt read depth
+#' @param logr Tumour sample logR
 #' @param hvaf Host sample VAF
+#' @param purity Estimated purity of tumour sample
+#' @param pseudocount Avoid infinite log-odds by adding a pseudocount to each
+#'     cell of the contingency table. Default = 0.5 (same as Facets).
 #' @export
-fast_contingency_table <- function(readdepth, tlogr, purity, tvaf, hvaf) {
-    r <- 2^(tlogr)
-    ph <- (1-purity) / (r * purity + (1 - purity))
-    pure_tumour_vaf <- clamp((tvaf - ph * hvaf) / (1-ph),0,1)
-    nh <- ph * readdepth
-    nt <- readdepth * (1 - ph)
-    m <- matrix(nrow=3,ncol=3)
-    m[1,1] <- nt * pure_tumour_vaf
-    m[2,1] <- nt * (1 - pure_tumour_vaf)
-    m[3,1] <- nt
-    m[1,2] <- nh * hvaf
-    m[2,2] <- nh * (1 - hvaf)
-    m[3,2] <- nh
-    m[1,3] <- readdepth * tvaf
-    m[2,3] <- readdepth * (1-tvaf)
-    m[3,3] <- readdepth
-    m
+fast_estimate_tumour_logodds <- function(total_readdepth, alt_readdepth, logr, hvaf, purity, pseudocount=0.5) {
+    result <- .estimate_contingency_table(total_readdepth, alt_readdepth, logr, hvaf, purity)
+    T <- total_readdepth
+    A <- alt_readdepth
+    L <- result$L
+    K <- result$K
+    odds <- ((T-K-A+L+pseudocount)*(L+pseudocount)) / ((K-L+pseudocount) * (A-L+pseudocount))
+    return (log(odds))
 }
+
+#' Fast approximate estimate of pure_tumour_vaf from a mixed sample
+#' @param total_readdepth Tumour sample total read depth
+#' @param alt_readdepth Tumour sample alt read depth
+#' @param logr Tumour sample logR
+#' @param hvaf Host sample VAF
+#' @param purity Estimated purity of tumour sample
+#' @param pseudocount Avoid infinite log-odds by adding a pseudocount to each
+#'     cell of the contingency table. Default = 0.5 (same as Facets).
+#' @export
+fast_estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr, hvaf, purity, pseudocount=0.5) {
+    result <- .estimate_contingency_table(total_readdepth, alt_readdepth, logr, hvaf, purity)
+    T <- total_readdepth
+    A <- alt_readdepth
+    L <- result$L
+    K <- result$K
+    return (list(a=K-L, b=L, c=K, d=T-K-A+L, e=A-L, f=T-K, g=T-A, h=A, i=T))
+}
+

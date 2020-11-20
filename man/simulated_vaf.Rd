@@ -4,8 +4,18 @@
 \alias{simulated_vaf}
 \title{Simulate VAF according to certain parameters}
 \usage{
-simulated_vaf(samplesize, depth, ta, tb, ha, hb, purity, tploidy = 2,
-  hploidy = 2, balance = 0)
+simulated_vaf(
+  samplesize,
+  depth,
+  ta,
+  tb,
+  ha,
+  hb,
+  purity,
+  tploidy = 2,
+  hploidy = 2,
+  balance = 0
+)
 }
 \description{
 Simulate VAF according to certain parameters

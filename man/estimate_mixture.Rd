@@ -5,8 +5,14 @@
 \title{Run Expectation Maximisation to optimise the fit of a mixture of Beta components
 to data}
 \usage{
-estimate_mixture(data, init_params, init_pi, max_steps = 1000,
-  tol = 1e-05, plot = FALSE)
+estimate_mixture(
+  data,
+  init_params,
+  init_pi,
+  max_steps = 1000,
+  tol = 1e-05,
+  plot = FALSE
+)
 }
 \arguments{
 \item{data}{(numeric matrix) - Observations in the range [0,1]}

@@ -5,8 +5,7 @@
 \title{Uses \code{deconvolute} to calculate adjusted tumour vaf as it would be if all host contamination were heterozygous
 (vectorised over indicated parameters)}
 \usage{
-v.convert_to_het_host(tumour_ref, tumour_alt, host_ref, host_alt, logr,
-  purity)
+v.convert_to_het_host(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity)
 }
 \arguments{
 \item{tumour_ref}{(vectorised) - number of REF reads observed in host-contaminated tumour, at current site}

@@ -12,9 +12,9 @@ expected_loh_vaf(purity, logr, ploidy)
 \arguments{
 \item{purity}{Estimated tumour purity (real value [0..1])}
 
-\item{logr}{Log (base-2) of the read depth ratio between tumour and normal (real value)}
+\item{logr}{(numeric) Log (base-2) of the read depth ratio between tumour and normal}
 
-\item{ploidy}{Estimated overall tumour ploidy (real value)}
+\item{ploidy}{(numeric) Estimated overall tumour ploidy}
 }
 \value{
 The estimated VAF, had the original state of the SNP been homozygous
@@ -28,5 +28,5 @@ HET in the founder.
 }
 \examples{
 expected_loh_vaf(0.817, c(1.713900, 1.607939, 1.629899, 1.570724, 1.666647), 2.114)
-# [1] 0.02595942 0.02788265 0.02747302 0.02859042 0.02680059
+# [1] 0.02665127 0.02868239 0.02824911 0.02943189 0.02753864
 }

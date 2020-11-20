@@ -4,8 +4,17 @@
 \alias{estimate_purity}
 \title{Rough estimate of purity}
 \usage{
-estimate_purity(host_vaf, tumour_vaf, logr, hhetl = 0.3, hhetu = 0.7,
-  thoml = 0.25, thomu = 0.75, lrl = -0.75, lru = 0.75)
+estimate_purity(
+  host_vaf,
+  tumour_vaf,
+  logr,
+  hhetl = 0.3,
+  hhetu = 0.7,
+  thoml = 0.25,
+  thomu = 0.75,
+  lrl = -0.75,
+  lru = 0.75
+)
 }
 \description{
 Rough estimate of purity
