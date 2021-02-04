@@ -27,6 +27,13 @@ calc_logr <- function(h_ref, h_alt, t_ref, t_alt) {
     log2( (t_tot / h_tot) / median((t_tot / h_tot), na.rm = T) )
 }
 
+#' @param logr - log2 of the ratio between tumour and host read depths. The read depths should be normalised prior
+#' to computing the logr, so that any difference in sequencing depth between the host and tumour samples doesn't
+#' influence the estimate of copy number.
+#' @param purity - Fraction of the tumour sample that is derived from tumour cells.
+#' @param ploidy - Overall tumour ploidy. The average read depth over the genome corresponds to this copy number.
+#' @param host_ploidy - Overall host ploidy. (default = 2)
+#' @param host_copy_number - The estimated copy number in the host for the genomic region being considered.
 #' @export
 calc_total_copynumber <- function(logr, purity, ploidy, host_copy_number = 2.0, host_ploidy = 2.0) {
     R = 2^logr
