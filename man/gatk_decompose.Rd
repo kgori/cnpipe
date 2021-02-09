@@ -9,6 +9,7 @@ gatk_decompose(
   filter1 = 0.1,
   filter2 = 0.05,
   filter3 = 0.001,
+  nsvs = 20,
   verbose = TRUE
 )
 }

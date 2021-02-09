@@ -13,6 +13,10 @@ pairwise_filter(comp_table, threshold = 0.8, majority = 0.8)
 \arguments{
 \item{comp_table}{Table comparing the segment means for each sample in the set.
 Can be created using `make_comparison_table(samples_list)`}
+
+\item{threshold}{float}
+
+\item{majority}{float}
 }
 \description{
 Runs the pairwise filter on the samples given in comp_table. This filter compares

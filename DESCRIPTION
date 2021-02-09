@@ -9,7 +9,7 @@ Description: Support functions for processing,
     cleaning and segmenting SNV data, and calling copy numbers
 Imports: data.table (>= 1.11.2), matrixStats (>= 0.53.1), logging (>= 0.7-103),
     gridBase (>= 0.4-7), GenomicRanges (>= 1.32.3), gridExtra (>= 2.3),
-    mixtools (>= 1.1.0), nloptr (>= 1.2.1), raster (>= 2.9-5)
+    mixtools (>= 1.1.0), nloptr (>= 1.2.1), raster (>= 2.9-5), R6 (>= 2.4.1)
 License: MIT
 Encoding: UTF-8
 LazyData: true
