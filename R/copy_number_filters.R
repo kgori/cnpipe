@@ -11,7 +11,7 @@ long_segment_filter <- function(samples_list, calls_table) {
         mapping <- map_short_segment_id_to_long_segment_id(sample_calls)
 
         sample_data <- samples_list[[samplename_]]
-        updates <- unique(sample_data[mapping, , on = "segmentID"][, .(segmentID, call=as.integer(round(mean(total_cn)))), by = longSegmentID])
+        updates <- unique(sample_data[mapping, , on = "segmentID"][, .(segmentID, call=max(0, as.integer(round(median(total_cn))))), by = longSegmentID])
         new_calls[updates, (paste0(samplename_, ".totalCN")) := call, on = "segmentID"]
     }
     polymorphic <- new_calls[, apply(as.matrix(.SD), 1, function(row) !all(row[1] == row)), .SDcols = grep("^s.+\\.totalCN$", colnames(new_calls))]
@@ -343,7 +343,6 @@ adjacent_segments_filter <- function(samples_list, comp_table, breakpoint_lookup
 #' @export
 make_comparison_table <- function(samples_list) {
     ploidy=2.0
-    calc_total_copynumber <- cnpipe::calc_total_copynumber
     comp <- samples_list[[1]][, .(nsnp=unique(nsnp)), by = segmentID]
 
     for (samplename_ in names(samples_list)) {
@@ -579,11 +578,11 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
 #' See documentation for `multiple_comparison_check` for details.
 #' @param comp_table Table comparing the segment means for each sample in the set.
 #' Can be created using `make_comparison_table(samples_list)`
-#' @param threshold
-#' @param majority
+#' @param threshold float
+#' @param majority float
 #' @export
 pairwise_filter <- function(comp_table, threshold = 0.8, majority = 0.8) {
-    calls <- update_copynumber_calls_multiple_comparison_strategy(comp_table, 0.8, 0.8)
+    calls <- update_copynumber_calls_multiple_comparison_strategy(comp_table, threshold, majority)
     polymorphic <- calls[, apply(as.matrix(.SD), 1, function(row) !all(row[1] == row)), .SDcols = grep("^s.+\\.totalCN$", colnames(calls))]
     calls[, isPolymorphic := polymorphic]
 }
