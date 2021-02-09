@@ -93,3 +93,10 @@ resegment_logr <- function(chr, pos, logr, penalty=100, kmin=5) {
     setcolorder(segments, c("chr", "startpos", "endpos", "width", "Nsnps"))
     segments[, .SD, .SDcols = c("chr", "startpos", "endpos", "width", "Nsnps")]
 }
+
+#' @export
+listappend <- function(lst, item) {
+    lst[[length(lst) + 1]] <- item
+    return (lst)
+}
+

@@ -8,6 +8,81 @@ safelog2 <- function(x) {
     clip(log2(x), -31, 31)
 }
 
+#' Creates an object to do GATK logR standardization and denoising using a panel of normals.
+#' This is simplified compared to the GATK procedure, as it doesn't apply any filters to the
+#' data, except for an optional winsorization. As such, it is advisable to filter out rows of
+#' the host matrix that have very low or high coverage, or which have row-median of zero.
+#' @importFrom "R6" R6Class
+#' @importFrom "matrixStats" rowMedians
+#' @export
+logRCorrector = R6Class(
+    "logRCorrector",
+    public=list(
+        #' @field row_medians Row medians of the input host read count matrix
+        row_medians=NA,
+
+        #' @field U Result of Singular Value Decomposition of processed host read counts,
+        #' used for denoising tumour logR.
+        U=NA,
+
+        #' @description
+        #' Constructor. Builds new object using host read count matrix as input
+        #' @param host_matrix Matrix of read counts, with samples as columns.
+        #' @param winsorization_quantile Values outside the quantile range set here
+        #' (q, 1-q) are clamped to the values at those quantiles.
+        #' Can be set to 0 to disable.
+        initialize = function(host_matrix, winsorization_quantile=0.001) {
+            stopifnot(winsorization_quantile >= 0 & winsorization_quantile <= 1)
+
+            host_matrix <-  sweep(host_matrix, 2, colMedians(host_matrix), "/")
+            rm <- rowMedians(host_matrix)
+            rm[rm==0]<-1
+            host_matrix <- sweep(host_matrix, 1, rm, "/")
+            host_matrix <- apply(host_matrix, 2, function(col) clip(col,
+                                                                    quantile(col, winsorization_quantile),
+                                                                    quantile(col, 1-winsorization_quantile)))
+            ix=which(host_matrix==0, arr.ind=TRUE)
+            host_matrix[ix] <- rowMedians(host_matrix)[ix[, "row"]]
+            host_matrix <- sweep(host_matrix, 2, colMedians(host_matrix), "/")
+            host_matrix <- apply(host_matrix, 2, safelog2)
+            u <- svd(host_matrix)$u
+            self$row_medians = rm
+            self$U = u
+        },
+
+        #' @description
+        #' Calculate standardized (not denoised) logR from tumour read counts
+        #' @param tumour_matrix Matrix of tumour read counts, samples in columns
+        standardize = function(tumour_matrix) {
+            stopifnot(nrow(tumour_matrix) == nrow(self$U))
+            tumour_matrix <- sweep(tumour_matrix, 2, colMedians(tumour_matrix), "/")
+            tumour_matrix <- sweep(tumour_matrix, 1, self$row_medians, "/")
+            tumour_matrix <- apply(tumour_matrix, 2, safelog2)
+            tumour_matrix
+        },
+
+        #' @description
+        #' Calculate denoised logR from tumour read counts.
+        #' @param tumour_matrix Matrix of tumour read counts, samples in columns
+        #' @param num_svs Number of singular values to use for denoising.
+        #' @param randomized Set to TRUE to use a random selection of
+        #' singular values. Set to FALSE to use the largest singular values.
+        denoise = function(tumour_matrix, num_svs, randomized=FALSE) {
+            stopifnot(nrow(tumour_matrix) == nrow(self$U))
+            if (num_svs > ncol(self$U)) num_svs <- ncol(self$U)
+            if (num_svs < 1) num_svs <- 1
+
+            tumour_matrix <- self$standardize(tumour_matrix)
+            if (randomized) {
+                u_select <- self$U[, sample.int(ncol(.self$U), num_svs)]
+            } else {
+                u_select <- self$U[, 1:num_svs]
+            }
+            tumour_matrix - u_select %*% (t(u_select) %*% tumour_matrix)
+        })
+)
+
+
 #' Obtain read count normalisation info from a panel of normals
 #' @param data (data.table / data.frame) Table of read counts, with columns representing samples
 #' and rows representing genomic locations or intervals
