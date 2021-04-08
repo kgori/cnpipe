@@ -25,11 +25,11 @@ make_breakpoint_test_lookup_table <- function(samples_list, compute_pval = FALSE
     for (samplename_ in names(samples_list)) {
         loginfo("Breakpoint testing: %s", samplename_)
         dt <- samples_list[[samplename_]]
-        result <- dt[, .(mn = mean(total_cn)),
+        result <- dt[, .(med = median(total_cn)),
                      by = segmentID][,
                                      .(segmentID,
                                        samplename = samplename_,
-                                       effect_size = abs(shift(mn) - mn))][!is.na(effect_size)]
+                                       effect_size = abs(shift(med) - med))][!is.na(effect_size)]
 
         if (compute_pval) {
             nseg <- dt[, max(segmentID)]
@@ -194,18 +194,18 @@ suggest_new_call <- function(breakpoint_id, samplename, sample_data, breakpoints
         breakpoint_position <- get_breakpoint_positions(breakpoint_id, breakpoints_table)
         cns_to_check <- seq(min(current_cns), max(current_cns), 1)
         local_sample_data <- sample_data[Index > (breakpoint_position - search_range) & Index < (breakpoint_position + search_range)]
-        local_means <- local_sample_data[, .(mean_total_cn=mean(total_cn)), by = totalCN][order(totalCN)]
-        local_means[, dist := abs(mean_total_cn - mean(data))]
-        logdebug(local_means)
-        return (local_means[dist == min(dist), totalCN])
+        local_medians <- local_sample_data[, .(median_total_cn=median(total_cn)), by = totalCN][order(totalCN)]
+        local_medians[, dist := abs(median_total_cn - median(data))]
+        logdebug(local_medians)
+        return (local_medians[dist == min(dist), totalCN])
     } else {
-        return (as.integer(round(mean(data),0)))
+        return (as.integer(round(median(data),0)))
     }
 }
 
 resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_test_lookup_table, oscillators) {
     .resolve_duo <- function(context, approved) {
-        if (context$cn_left != context$cn_segment & abs(context$cn_left_mean - context$cn_segment_mean) > 0.6) {
+        if (context$cn_left != context$cn_segment & abs(context$cn_left_median - context$cn_segment_median) > 0.6) {
             updated_calls[segmentID >= unit[1] & segmentID < unit[length(unit)], (paste0(samplename_, ".totalCN")) := context$cn_segment]
             tmp <- data.table(segmentID=unit, approved=FALSE)
             tmp[segmentID==context$start, approved := TRUE]
@@ -219,7 +219,7 @@ resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_tes
 
     .resolve_trio <- function(context, approved) {
         # This function closes over variables sample_dt, unit
-        lr_diff <- abs(context$cn_left_mean - context$cn_right_mean)
+        lr_diff <- abs(context$cn_left_median - context$cn_right_median)
 
         if (context$cn_left != context$cn_right & lr_diff > 0.6) {
             # Find a breakpoint within the current unit
@@ -270,7 +270,7 @@ resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_tes
 
     for (unit in oscillators) {
         ctxt <- get_unit_context(unit, changepoints, sample_dt)
-        if (is.null(ctxt$cn_right_mean) | is.nan(ctxt$cn_right_mean)) {
+        if (is.null(ctxt$cn_right_median) | is.nan(ctxt$cn_right_median)) {
             approved <- .resolve_duo(ctxt, approved)
         } else {
             approved <- .resolve_trio(ctxt, approved)
@@ -298,20 +298,20 @@ get_unit_context <- function(unit, sigbks, sample_dt) {
         right_ <- min(sigbks[sigbks >= end_])
     }
 
-    cn_left_mean_ <- sample_dt[(segmentID >= left_) & (segmentID < start_), mean(total_cn)]
-    cn_segment_mean_ <- sample_dt[(segmentID >= start_) & (segmentID < end_), mean(total_cn)]
-    cn_right_mean_ <- sample_dt[(segmentID >= end_) & (segmentID < right_),  mean(total_cn)]
-    cn_overall_mean_ <- sample_dt[(segmentID >= left_) & (segmentID < right_),  mean(total_cn)]
+    cn_left_median_ <- sample_dt[(segmentID >= left_) & (segmentID < start_), median(total_cn)]
+    cn_segment_median_ <- sample_dt[(segmentID >= start_) & (segmentID < end_), median(total_cn)]
+    cn_right_median_ <- sample_dt[(segmentID >= end_) & (segmentID < right_),  median(total_cn)]
+    cn_overall_median_ <- sample_dt[(segmentID >= left_) & (segmentID < right_),  median(total_cn)]
 
     list(start=start_, end=end_, left=left_, right=right_,
-         cn_left_mean=cn_left_mean_,
-         cn_segment_mean=cn_segment_mean_,
-         cn_right_mean=cn_right_mean_,
-         cn_overall_mean=cn_overall_mean_,
-         cn_left=as.integer(round(cn_left_mean_)),
-         cn_segment=as.integer(round(cn_segment_mean_)),
-         cn_right=as.integer(round(cn_right_mean_)),
-         cn_overall=as.integer(round(cn_overall_mean_)))
+         cn_left_median=cn_left_median_,
+         cn_segment_median=cn_segment_median_,
+         cn_right_median=cn_right_median_,
+         cn_overall_median=cn_overall_median_,
+         cn_left=as.integer(round(cn_left_median_)),
+         cn_segment=as.integer(round(cn_segment_median_)),
+         cn_right=as.integer(round(cn_right_median_)),
+         cn_overall=as.integer(round(cn_overall_median_)))
 }
 
 
@@ -319,7 +319,7 @@ get_unit_context <- function(unit, sigbks, sample_dt) {
 #' Runs the adjacent segments filter on each sample in the samples list.
 #' @param samples_list List of data.tables for each sample. Data tables should
 #' already be marked with segment IDs of the initial segmentation.
-#' @param comp_table Table comparing the segment means for each sample in the set.
+#' @param comp_table Table comparing the segment medians for each sample in the set.
 #' Should contain entries for each sample in the samples list. Can be created using
 #' `make_comparison_table(samples_list)`, and can be further filtered with
 #' `pairwise_filter(comp_table)`.
@@ -348,7 +348,7 @@ make_comparison_table <- function(samples_list) {
     for (samplename_ in names(samples_list)) {
         loginfo("Making comparison table: analysing %s", samplename_)
         comp[, paste0(samplename_, ".totalCN") := samples_list[[samplename_]][, unique(totalCN), by = segmentID][, V1]]
-        comp[, paste0(samplename_, ".meanCN") := samples_list[[samplename_]][, mean(total_cn), by = segmentID][, V1]]
+        comp[, paste0(samplename_, ".medianCN") := samples_list[[samplename_]][, median(total_cn), by = segmentID][, V1]]
     }
 
     loginfo("Making comparison table: comparing all samples")
@@ -360,17 +360,17 @@ make_comparison_table <- function(samples_list) {
     most_frequent_state <- apply(comp[, .SD, .SDcols = grep("s.+\\.totalCN$", colnames(comp))], 1, find_most_frequent)
     comp[, mode.totalCN := most_frequent_state]
 
-    selected_state_means <- sapply(1:nrow(comp), function(i) {
+    selected_state_medians <- sapply(1:nrow(comp), function(i) {
         mfs <- comp[i, mode.totalCN]
         index <- which(unlist(comp[i, .SD, .SDcols = grep("s.+\\.totalCN$", colnames(comp))]) == mfs)
-        means.index <- sub("totalCN$", "meanCN", names(index))
-        means <- unlist(comp[i, .SD, .SDcols = means.index])
-        mean(means)
+        medians.index <- sub("totalCN$", "medianCN", names(index))
+        medians <- unlist(comp[i, .SD, .SDcols = medians.index])
+        median(medians)
     })
 
-    comp[, mean.of.mode.state := selected_state_means]
+    comp[, median.of.mode.state := selected_state_medians]
 
-    setcolorder(comp, c("segmentID", "nsnp", "mode.totalCN", "mean.of.mode.state"))
+    setcolorder(comp, c("segmentID", "nsnp", "mode.totalCN", "median.of.mode.state"))
 }
 
 
@@ -398,7 +398,7 @@ update_copynumber_calls_multiple_comparison_strategy <- function(comp_table, thr
 }
 
 #' @param copy_number_table = table of data with a row for each segment. A row contains the integer
-#' copy number state of each sample, the mean of the per-SNP copy number estimates for each sample,
+#' copy number state of each sample, the median of the per-SNP copy number estimates for each sample,
 #' and the most frequent copy number state.
 #' @param segment_id - this function only looks at one segment of the table
 #' @param threshold - compared distances have to be greater than this value to pass
@@ -428,11 +428,11 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
     # 1st step - extract our target row from the table
     table_row <- copy_number_table[segmentID == segment_id]
 
-    # 2nd step - identify the columns that hold the copy number means and integer values,
-    # then extract this data into 'cn_means' and 'integer_calls'. Also identify the unique calls.
-    mean_columns <- grep("^s.+\\.meanCN$", colnames(table_row))
+    # 2nd step - identify the columns that hold the copy number medians and integer values,
+    # then extract this data into 'cn_medians' and 'integer_calls'. Also identify the unique calls.
+    median_columns <- grep("^s.+\\.medianCN$", colnames(table_row))
     integer_columns <- grep("^s.+\\.totalCN$", colnames(table_row))
-    cn_means <- unlist(table_row[, .SD, .SDcols = mean_columns])
+    cn_medians <- unlist(table_row[, .SD, .SDcols = median_columns])
     integer_calls <- unlist(table_row[, .SD, .SDcols = integer_columns])
     unique_calls <- sort(unique(integer_calls))
 
@@ -444,7 +444,7 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
 
     # 3rd step - compute all the pairwise distances. Easiest to do this in one go,
     # and pull out the distances for different copy number states later.
-    distances <- as.matrix(dist(cn_means))
+    distances <- as.matrix(dist(cn_medians))
 
     # Preparation over. Now loop over the possible combinations of copy number states.
     # This should treat the case where there are onnly 2 unique states correctly.
@@ -492,7 +492,7 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
 
                 # Store the details of any failing samples. Don't make any copy number updates yet, save them for after the loop.
                 # Possibly there will be some ambiguities to resolve. To help in this, also record the average distance between
-                # mean copy number in the failing sample and each sample with the candidate copy number.
+                # median copy number in the failing sample and each sample with the candidate copy number.
                 if (length(failing_samples) > 0) {
                     result <- data.table(samplename =   names(failing_samples),
                                          from =         minority_state,
@@ -503,7 +503,7 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
             } else  {
                 # If there is no clear majority, we can't restrict ourselves to only considering changing the samples with
                 # the minority copy number state. We need to look in the column directions as well.
-                proportion_passing_threshold_row <- rowMeans(passing_threshold)
+                proportion_passing_threshold_row <- rowMedians(passing_threshold)
                 failing_samples_row <- which(proportion_passing_threshold_row < majority)
                 if (length(failing_samples_row) > 0) {
                     result_row <- data.table(samplename =   names(failing_samples_row),
@@ -564,7 +564,7 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
     # (e.g. a sample has CN=3, but failed the majority vote compared to CN=2 and CN=4), simply choose the state with
     # the smallest avg_distance.
     results <- results[, .SD[which.min(avg_distance)], by = samplename]
-    samples_to_change <- sub("\\.meanCN$", ".totalCN", results$samplename)
+    samples_to_change <- sub("\\.medianCN$", ".totalCN", results$samplename)
     stopifnot(isTRUE(all.equal(unname(integer_calls[samples_to_change]), results$from))) # assert that these samples currently have the 'from' state we expect them to have!
 
     integer_calls[samples_to_change] <- results$to
@@ -573,10 +573,10 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
 
 #' Runs the pairwise filter on the samples given in comp_table. This filter compares
 #' the copy number call for each sample to the call in the majority of samples. If
-#' the copy number is different to the majority, then it must have a mean total copy
-#' number that differs from the majority mean by at least `threshold`.
+#' the copy number is different to the majority, then it must have a median total copy
+#' number that differs from the majority median by at least `threshold`.
 #' See documentation for `multiple_comparison_check` for details.
-#' @param comp_table Table comparing the segment means for each sample in the set.
+#' @param comp_table Table comparing the segment medians for each sample in the set.
 #' Can be created using `make_comparison_table(samples_list)`
 #' @param threshold float
 #' @param majority float
@@ -613,7 +613,7 @@ get_all_breakpoints <- function(comp_table, samplenames) {
 
 recall_genotyping_segments <- function(samplename_, test_segments, sample_dt, calls_dt) {
     updated_calls <- copy(calls_dt)
-    updates <- sample_dt[segmentID %in% test_segments, .(new_call=as.integer(round(mean(total_cn)))), by = segmentID]
+    updates <- sample_dt[segmentID %in% test_segments, .(new_call=as.integer(round(median(total_cn)))), by = segmentID]
     setkey(updates, segmentID)
     updated_calls[updates, (paste0(samplename_, ".totalCN")) := new_call, on = "segmentID"]
     return (updated_calls)
