@@ -3,10 +3,17 @@ map_short_segment_id_to_long_segment_id <- function(dt) {
 }
 
 #' @export
+#' @importFrom "progress" progress_bar
 long_segment_filter <- function(samples_list, calls_table) {
     new_calls <- copy(calls_table)
+    pb <- progress_bar$new(format = "Long segment filter [:bar] :what :percent eta: :eta",
+                          total = length(samples_list),
+                          clear = FALSE,
+                          width = 80)
+    longest_label <- max(nchar(names(samples_list)))
     for (samplename_ in names(samples_list)) {
-        loginfo("Long segment filter: %s", samplename_)
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        #loginfo("Long segment filter: %s", samplename_)
         sample_calls <- calls_table[, .SD, .SDcols = c("segmentID", paste0(samplename_, ".totalCN"))]
         mapping <- map_short_segment_id_to_long_segment_id(sample_calls)
 
@@ -19,17 +26,36 @@ long_segment_filter <- function(samples_list, calls_table) {
     new_calls
 }
 
+#' Makes a lookup table to speed up the adjacent segments filter.
 #' @export
 make_breakpoint_test_lookup_table <- function(samples_list, compute_pval = FALSE) {
     breakpoint_test_lookup_table <- list()
+    pb <- progress_bar$new(format = "Making lookup table [:bar] :what :percent eta: :eta",
+                           total = length(samples_list),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(names(samples_list)))
     for (samplename_ in names(samples_list)) {
-        loginfo("Breakpoint testing: %s", samplename_)
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        #loginfo("Breakpoint testing: %s", samplename_)
         dt <- samples_list[[samplename_]]
         result <- dt[, .(med = median(total_cn)),
                      by = segmentID][,
                                      .(segmentID,
                                        samplename = samplename_,
                                        effect_size = abs(shift(med) - med))][!is.na(effect_size)]
+
+        # Precompute the median total cn of pairs of adjacent segments, to quickly see the copy number
+        # that would occur if they were merged. This speeds up the adjacent segments filter.
+        dt[, mergeOddID := segmentID - (segmentID %% 2)+1]
+        dt[, mergeEvenID := segmentID + (segmentID %% 2)]
+        mergeOdds <- dt[, .(merged_median = median(total_cn)), by = mergeOddID]
+        mergeEvens <- dt[, .(merged_median = median(total_cn)), by = mergeEvenID]
+        dt[, c("mergeOddID", "mergeEvenID") := NULL]
+        setnames(mergeOdds, old = "mergeOddID", new = "segmentID")
+        setnames(mergeEvens, old = "mergeEvenID", new = "segmentID")
+        merge_data <- rbind(mergeOdds, mergeEvens)[order(segmentID)][segmentID > 1]
+        result[merge_data, merged_median := i.merged_median, on = "segmentID"]
 
         if (compute_pval) {
             nseg <- dt[, max(segmentID)]
@@ -51,7 +77,7 @@ make_breakpoint_test_lookup_table <- function(samples_list, compute_pval = FALSE
 
 
 # Filters used in processing total copy number
-apply_adj_filter_until_stable <- function(samples_list, samplename_, calls_dt, breakpoint_lookup, threshold) {
+apply_adj_filter_until_stable <- function(samples_list, samplename_, calls_dt, breakpoint_lookup, threshold, method = "clonal") {
     # Define a class
     failuresList <- setRefClass("failuresList",
                                 fields=list(iteration = "numeric", indices = "numeric"),
@@ -69,9 +95,10 @@ apply_adj_filter_until_stable <- function(samples_list, samplename_, calls_dt, b
     prev_failures <- listappend(prev_failures, failuresList(iteration = nrounds, indices = get_failures(samplename_, calls_dt, breakpoint_lookup)))
 
     while(isFALSE(stabilised)) {
-        post_adj <- adjacent_segment_filter_iteration(samplename_, copy(post_adj), samples_list[[samplename_]], breakpoint_lookup, threshold)
         nrounds <- nrounds + 1
+        post_adj <- adjacent_segment_filter_iteration(samplename_, copy(post_adj), samples_list[[samplename_]], breakpoint_lookup, threshold, method)
         current_failures <- get_failures(samplename_, post_adj, breakpoint_lookup)
+        logdebug("Round %d, %d Failures: %s", nrounds, length(current_failures), current_failures)
 
         if (length(current_failures) == 0) {
             return (list(calls=post_adj, oscillators=list()))
@@ -82,15 +109,25 @@ apply_adj_filter_until_stable <- function(samples_list, samplename_, calls_dt, b
             if (configuration$equals(current_failures)) {
                 matching_iter <- configuration$iteration
                 stabilised = TRUE
-                logdebug(paste("Match at", matching_iter))
+                logdebug("Adjacent segments filter has stabilised - matching configurations found at iterations %d and %d", matching_iter, nrounds)
             }
         }
 
         prev_failures <- listappend(prev_failures, failuresList(iteration = nrounds, indices = current_failures))
     }
 
-    oscillating_rounds <- seq(matching_iter, nrounds-1)
-    oscillators <- units(sort(unique(Reduce(c, lapply(prev_failures[oscillating_rounds], function(item) item$indices)))))
+    # Collect oscillators
+    period <- nrounds - matching_iter + 1
+    if (nrounds - matching_iter < 0) { # Identify the oscillators
+        oscillating_rounds <- seq(matching_iter+1, nrounds)
+        breakpoints_in_any_oscillating_round <- Reduce(union, lapply(prev_failures[oscillating_rounds], function(item) item$indices))
+        breakpoints_in_common <- Reduce(intersect, lapply(prev_failures[oscillating_rounds], function(item) item$indices))
+        oscillators <- units(sort(unique(setdiff(breakpoints_in_any_oscillating_round, breakpoints_in_common))))
+        logdebug("Found %d oscillators - %s", length(oscillators), oscillators)
+    } else { # No oscillators to find
+        logdebug("Found 0 oscillators")
+        oscillators <- vector("integer", 0L)
+    }
 
     return(list(calls=post_adj, oscillators=oscillators))
 }
@@ -121,7 +158,7 @@ get_breakpoint_positions <- function(segment_ids, breakpoint_table) {
 
 
 adjacent_segment_filter_iteration <- function(samplename_, calls_dt, sample_dt, breakpoint_test_table,
-                                              min_effect_size = 0.6) {
+                                              min_effect_size = 0.6, method = "clonal") {
     # 0) Preamble - make copies of data that should stay constant
     #    and subset that data to the current sample
     filtered_calls <- copy(calls_dt[, .SD, .SDcols = c("segmentID", "nsnp", paste0(samplename_, ".totalCN"))])
@@ -133,7 +170,7 @@ adjacent_segment_filter_iteration <- function(samplename_, calls_dt, sample_dt, 
     # 1) Select changepoints
     changepoint_segments <- get_changepoint_segids(filtered_calls, paste0(samplename_, ".totalCN"))
 
-    # 2) Test changepoints and collect failures (Note: this can be done once on every breakpoint and cached, right?)
+    # 2) Test changepoints and collect failures (breakpoints where the step change is below the threshold)
     tests <- breakpoint_test_table[samplename==samplename_ & segmentID %in% changepoint_segments]
     failures <- tests[p_value >= 0.05 | effect_size < min_effect_size, segmentID]
 
@@ -141,16 +178,29 @@ adjacent_segment_filter_iteration <- function(samplename_, calls_dt, sample_dt, 
         return (filtered_calls)
     }
     suggested_updates <- list()
-    for (unit in units(failures)) {
-        suggested_integer <- suggest_new_call(unit, samplename_, sample_data, breakpoints_table, filtered_calls)
-        suggestions <- data.table(segmentID = c(min(unit) - 1, unit),
-                                  integer_method = suggested_integer)
+
+    suggest_new_call <- function(bk, sample_lookup_table, method="clonal") {
+        merged_median <- sample_lookup_table[segmentID==bk, merged_median]
+        if (method == "clonal") {
+            suggested_call <- round(merged_median)
+        } else if (method == "subclonal") {
+            suggested_call <- round(2*merged_median)/2
+        } else { stop("Unrecognised method") }
+        suggested_call
+    }
+
+    sample_lookup_table <- breakpoint_test_table[samplename==samplename_]
+    for (bk in failures) {
+        #suggested_call <- suggest_new_call(bk, samplename_, sample_data, breakpoint_test_table, filtered_calls, method)
+        suggested_call <- suggest_new_call(bk, sample_lookup_table, method)
+        suggestions <- data.table(segmentID = bk,
+                                  suggested_new_call = suggested_call)
         suggested_updates <- listappend(suggested_updates, suggestions)
     }
     suggested_updates <- rbindlist(suggested_updates)
 
     # 3) Apply the changes
-    filtered_calls[suggested_updates, (paste0(samplename_, ".totalCN")) := integer_method]
+    filtered_calls[suggested_updates, (paste0(samplename_, ".totalCN")) := suggested_new_call]
 }
 
 #' Break a vector into contiguous units
@@ -177,35 +227,37 @@ units <- function(v) {
     out
 }
 
-suggest_new_call <- function(breakpoint_id, samplename, sample_data, breakpoints_table, current_filtered_calls, search_range = 10000, method="integer") {
-    if (isFALSE(method %in% c("integer", "local_distribution"))) {
-        stop("method should be one of 'integer' or 'local_distribution")
-    }
+# suggest_new_call <- function(breakpoint_id, samplename, sample_data, breakpoints_table, current_filtered_calls, method="clonal", search_range = 10000) {
+#     if (isFALSE(method %in% c("clonal", "local_distribution", "subclonal"))) {
+#         stop("method should be one of 'integer', 'halfinteger' or 'local_distribution'")
+#     }
+#
+#     segments_to_merge <- c(min(breakpoint_id) - 1, breakpoint_id)
+#     current_cns <- current_filtered_calls[segmentID %in% segments_to_merge, .SD[[1]], .SDcols = paste0(samplename, ".totalCN")]
+#     if (all(current_cns[1] == current_cns)) {
+#         return (current_cns[1])
+#     }
+#
+#     data <- sample_data[segmentID %in% segments_to_merge, total_cn]
+#
+#     if (method == "local_distribution") {
+#         breakpoint_position <- get_breakpoint_positions(breakpoint_id, breakpoints_table)
+#         cns_to_check <- seq(min(current_cns), max(current_cns), 1)
+#         local_sample_data <- sample_data[Index > (breakpoint_position - search_range) & Index < (breakpoint_position + search_range)]
+#         local_medians <- local_sample_data[, .(median_total_cn=median(total_cn)), by = totalCN][order(totalCN)]
+#         local_medians[, dist := abs(median_total_cn - median(data))]
+#         logdebug(local_medians)
+#         return (local_medians[dist == min(dist), totalCN])
+#     } else if (method == "clonal") {
+#         return (as.integer(round(median(data), 0)))
+#     } else {
+#         return (round(median(data*2), 0) / 2)
+#     }
+# }
 
-    segments_to_merge <- c(min(breakpoint_id) - 1, breakpoint_id)
-    current_cns <- current_filtered_calls[segmentID %in% segments_to_merge, .SD[[1]], .SDcols = paste0(samplename, ".totalCN")]
-    if (all(current_cns[1] == current_cns)) {
-        return (current_cns[1])
-    }
-
-    data <- sample_data[segmentID %in% segments_to_merge, total_cn]
-
-    if (method == "local_distribution") {
-        breakpoint_position <- get_breakpoint_positions(breakpoint_id, breakpoints_table)
-        cns_to_check <- seq(min(current_cns), max(current_cns), 1)
-        local_sample_data <- sample_data[Index > (breakpoint_position - search_range) & Index < (breakpoint_position + search_range)]
-        local_medians <- local_sample_data[, .(median_total_cn=median(total_cn)), by = totalCN][order(totalCN)]
-        local_medians[, dist := abs(median_total_cn - median(data))]
-        logdebug(local_medians)
-        return (local_medians[dist == min(dist), totalCN])
-    } else {
-        return (as.integer(round(median(data),0)))
-    }
-}
-
-resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_test_lookup_table, oscillators) {
+resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_test_lookup_table, oscillators, threshold = 0.6) {
     .resolve_duo <- function(context, approved) {
-        if (context$cn_left != context$cn_segment & abs(context$cn_left_median - context$cn_segment_median) > 0.6) {
+        if (context$cn_left != context$cn_segment & abs(context$cn_left_median - context$cn_segment_median) > threshold) {
             updated_calls[segmentID >= unit[1] & segmentID < unit[length(unit)], (paste0(samplename_, ".totalCN")) := context$cn_segment]
             tmp <- data.table(segmentID=unit, approved=FALSE)
             tmp[segmentID==context$start, approved := TRUE]
@@ -221,7 +273,7 @@ resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_tes
         # This function closes over variables sample_dt, unit
         lr_diff <- abs(context$cn_left_median - context$cn_right_median)
 
-        if (context$cn_left != context$cn_right & lr_diff > 0.6) {
+        if (context$cn_left != context$cn_right & lr_diff > threshold) {
             # Find a breakpoint within the current unit
             scores <- sapply(unit, function(bk) {
                 score_merge_with_left <-
@@ -269,10 +321,13 @@ resolve_oscillators <- function(samplename_, sample_dt, calls_dt, breakpoint_tes
     approved <- list(data.table(segmentID=changepoints, approved=TRUE))
 
     for (unit in oscillators) {
+        logdebug("Resolving oscillators: current unit = %s", unit)
         ctxt <- get_unit_context(unit, changepoints, sample_dt)
         if (is.null(ctxt$cn_right_median) | is.nan(ctxt$cn_right_median)) {
+            logdebug("Resolving as a duo: %d-%d | %d-%d", ctxt$left, ctxt$start, ctxt$start, ctxt$end)
             approved <- .resolve_duo(ctxt, approved)
         } else {
+            logdebug("Resolving as a trio: %d-%d | %d-%d | %d-%d", ctxt$left, ctxt$start, ctxt$start, ctxt$end, ctxt$end, ctxt$right)
             approved <- .resolve_trio(ctxt, approved)
         }
     }
@@ -295,7 +350,7 @@ get_unit_context <- function(unit, sigbks, sample_dt) {
     if (end_ >= max(sigbks)) {
         right_ <- end_
     } else {
-        right_ <- min(sigbks[sigbks >= end_])
+        right_ <- min(sigbks[sigbks > end_])
     }
 
     cn_left_median_ <- sample_dt[(segmentID >= left_) & (segmentID < start_), median(total_cn)]
@@ -327,11 +382,22 @@ get_unit_context <- function(unit, sigbks, sample_dt) {
 #' significance level. Create using `make_breakpoint_test_lookup_table(samples_list)`
 #' @param threshold for effect size in breakpoint assessment
 #' @export
-adjacent_segments_filter <- function(samples_list, comp_table, breakpoint_lookup_table, threshold = 0.6) {
+adjacent_segments_filter <- function(samples_list, comp_table, breakpoint_lookup_table, samplenames = NULL, threshold = 0.6, method = "clonal") {
     new_calls <- copy(comp_table)
-    for (samplename_ in names(samples_list)) {
-        loginfo(samplename_)
-        postadj <- apply_adj_filter_until_stable(samples_list, samplename_, comp_table, breakpoint_lookup_table, threshold)
+    if (is.null(samplenames)) {
+        samplenames <- names(samples_list)
+    } else {
+        samplenames <- intersect(names(samples_list), samplenames)
+    }
+    pb <- progress_bar$new(format = "Adjacent segments filter [:bar] :what :percent eta: :eta",
+                           total = length(samplenames),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(samplenames))
+    for (samplename_ in samplenames) {
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        # loginfo("Running adjacent segments filter on %s [%d/%d, %.2f%%]", samplename_, iter, N, 100*iter/N)
+        postadj <- apply_adj_filter_until_stable(samples_list, samplename_, comp_table, breakpoint_lookup_table, threshold, method)
         resolve_osc <- resolve_oscillators(samplename_, samples_list[[samplename_]], postadj$calls, breakpoint_lookup_table, postadj$oscillators)
         new_calls[, eval(paste0(samplename_, ".totalCN")) := resolve_osc$calls[, .SD, .SDcols = paste0(samplename_, ".totalCN")]]
     }
@@ -342,16 +408,21 @@ adjacent_segments_filter <- function(samples_list, comp_table, breakpoint_lookup
 
 #' @export
 make_comparison_table <- function(samples_list) {
-    ploidy=2.0
     comp <- samples_list[[1]][, .(nsnp=unique(nsnp)), by = segmentID]
-
+    pb <- progress_bar$new(format = "Making comparison table [:bar] :what :percent eta: :eta",
+                           total = length(samples_list) + 1,
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(names(samples_list)))
     for (samplename_ in names(samples_list)) {
-        loginfo("Making comparison table: analysing %s", samplename_)
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        #loginfo("Making comparison table: analysing %s", samplename_)
         comp[, paste0(samplename_, ".totalCN") := samples_list[[samplename_]][, unique(totalCN), by = segmentID][, V1]]
         comp[, paste0(samplename_, ".medianCN") := samples_list[[samplename_]][, median(total_cn), by = segmentID][, V1]]
     }
 
-    loginfo("Making comparison table: comparing all samples")
+    pb$tick(tokens=list(what="Final comparison"))
+    #loginfo("Making comparison table: comparing all samples")
     find_most_frequent <- function(v) {
         t = table(v)
         as.integer(names(t)[which.max(t)])
@@ -384,11 +455,16 @@ update_copynumber_calls_multiple_comparison_strategy <- function(comp_table, thr
     }
 
     new_calls <- list()
+    pb <- progress_bar$new(format = "Pairwise filter [:bar] :percent eta: :eta",
+                           total = nrow(comp_table_copy),
+                           clear = FALSE,
+                           width = 80)
     for (i in 1:nrow(comp_table_copy)) {
-        if (i %% 100 == 0) {
-            loginfo("Pairwise filter processing segment ID: %d",
-                    comp_table_copy[i, segmentID])
-        }
+        # if (i %% 100 == 0) {
+        #     loginfo("Pairwise filter processing segment ID: %d",
+        #             comp_table_copy[i, segmentID])
+        # }
+        pb$tick()
         new_calls[[i]] <- update_row(row_index=i)
     }
     new_calls <- rbindlist(new_calls)
@@ -503,7 +579,7 @@ multiple_comparison_check <- function(copy_number_table, segment_id, threshold, 
             } else  {
                 # If there is no clear majority, we can't restrict ourselves to only considering changing the samples with
                 # the minority copy number state. We need to look in the column directions as well.
-                proportion_passing_threshold_row <- rowMedians(passing_threshold)
+                proportion_passing_threshold_row <- rowMeans(passing_threshold)
                 failing_samples_row <- which(proportion_passing_threshold_row < majority)
                 if (length(failing_samples_row) > 0) {
                     result_row <- data.table(samplename =   names(failing_samples_row),
@@ -602,7 +678,12 @@ get_genotyping_breakpoints_for_sample <- function(comp_table, all_breakpoints, s
     return (sort(unique(candidates)))
 }
 
-get_all_breakpoints <- function(comp_table, samplenames) {
+#' @export
+get_all_breakpoints <- function(comp_table, samplenames = NULL) {
+    if (is.null(samplenames)) {
+        samplenames <- sub("\\.totalCN$", "", grep("\\.totalCN", colnames(input_calls), value = TRUE))
+        samplenames <- samplenames[samplenames != "mode"]
+    }
     all_bks <- vector("integer")
     for (samplename_ in samplenames) {
         breakpoint_segids <- get_changepoint_segids(comp_table, samplename_)
@@ -619,15 +700,237 @@ recall_genotyping_segments <- function(samplename_, test_segments, sample_dt, ca
     return (updated_calls)
 }
 
+recall_genotyping_segments <- function(samplename_, test_segments, sample_dt, calls_dt, allow_half_integer=FALSE) {
+    updated_calls <- copy(calls_dt)
+    if (allow_half_integer) {
+        updates <- sample_dt[segmentID %in% test_segments, .(new_call=0.5*round(median(2*total_cn))), by = segmentID]
+    } else {
+        updates <- sample_dt[segmentID %in% test_segments, .(new_call=as.integer(round(median(total_cn)))), by = segmentID]
+    }
+    setkey(updates, segmentID)
+    updated_calls[updates, (paste0(samplename_, ".totalCN")) := new_call, on = "segmentID"]
+    return (updated_calls)
+}
+
 #' @export
 genotype_copynumber_calls <- function(samples_list, comp_table, breakpoint_lookup_table) {
     all_candidates <- get_all_breakpoints(comp_table, names(samples_list))
     new_calls <- copy(comp_table)
-    for (samplename_ in names(samples_list)) {
+    samplenames <- names(samples_list)
+    pb <- progress_bar$new(format = "Genotyping breakpoints [:bar] :what :percent eta: :eta",
+                           total = length(samplenames),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(samplenames))
+    for (samplename_ in samplenames) {
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        #loginfo("Running genotyping on %s [%d/%d, %.2f%%]", samplename_, iter, N, 100*iter/N)
+
         candidates <- get_genotyping_breakpoints_for_sample(comp_table, all_candidates, samplename_, breakpoint_lookup_table)
         new_calls <- recall_genotyping_segments(samplename_, candidates, samples_list[[samplename_]], comp_table)
     }
     polymorphic <- new_calls[, apply(as.matrix(.SD), 1, function(row) !all(row[1] == row)), .SDcols = grep("^s.+\\.totalCN$", colnames(new_calls))]
     new_calls[, isPolymorphic := polymorphic]
     new_calls
+}
+
+#' @export
+unify_medians_filter <- function(samples_list, calls_table, method = "clonal") {
+    if (!(method %in% c("clonal", "subclonal"))) {
+        stop("Method must be one of 'clonal' or 'subclonal'")
+    }
+    segid_map <- get_unified_segment_ids(samples_list, calls_table)
+
+    new_calls <- copy(calls_table)
+    samplenames <- names(samples_list)
+    pb <- progress_bar$new(format = "Unify medians filter [:bar] :what :percent eta: :eta",
+                           total = length(samplenames),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(samplenames))
+    for (samplename_ in samplenames) {
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        #loginfo("Running unify medians filter (%s) on %s [%d/%d, %.2f%%]", method, samplename_, iter, N, 100*iter/N)
+        dt <- samples_list[[samplename_]]
+        if (method == "clonal") {
+            median_call <- dt[segid_map, , on = "segmentID"][, .(median_call=max(0, as.integer(round(median(total_cn))))), by = ulsID][segid_map, median_call, on = "ulsID"]
+        } else {
+            median_call <- dt[segid_map, , on = "segmentID"][, .(median_call=max(0, as.integer(0.5*round(median(2*total_cn))))), by = ulsID][segid_map, median_call, on = "ulsID"]
+        }
+        new_calls[, (paste0(samplename_, ".totalCN")) := median_call]
+    }
+
+    polymorphic <- new_calls[, apply(as.matrix(.SD), 1, function(row) !all(row[1] == row)), .SDcols = grep("^s.+\\.totalCN$", colnames(new_calls))]
+    new_calls[, isPolymorphic := polymorphic]
+    new_calls
+}
+
+get_unified_segment_ids <- function(samples_list, calls_table) {
+    all_breakpoints <- get_all_breakpoints(calls_table, names(samples_list))
+
+    tmp <- data.table(segmentID=1:max(calls_table$segmentID), is_break = FALSE)
+    tmp[segmentID %in% all_breakpoints, is_break := TRUE]
+    tmp[, ulsID := cumsum(is_break) + 1]
+    tmp
+}
+
+
+do_segment_calculation <- function(sample_dt, selecter, region_bounds = NULL, use_tetraploid_copynumber = FALSE) {
+    if (!is.null(region_bounds)) {
+        if (!is.numeric(region_bounds)) {
+            stop("Region bounds must be numeric")
+        } else if (length(region_bounds) != 2) {
+            stop ("Region bounds must be length 2")
+        }
+
+        minStart <- region_bounds[1]
+        maxEnd <- region_bounds[2]
+        sample_dt <- sample_dt[START >= minStart & END <= maxEnd]
+    }
+
+    setkey(sample_dt, CHROM, START, END)
+    if (use_tetraploid_copynumber) {
+        ol <- foverlaps(sample_dt, selecter)[, .(CHROM, START=i.START, END=i.END, total_cn=total_cn_tetraploid, selecterID, segmentID)]
+    } else {
+        ol <- foverlaps(sample_dt, selecter)[, .(CHROM, START=i.START, END=i.END, total_cn=total_cn_diploid, selecterID, segmentID)]
+
+    }
+    ol[, .(START=min(START), END=max(END), minSegmentID=min(segmentID), maxSegmentID=max(segmentID), medianCN=median(total_cn), clonalCN=round(median(total_cn)), subclonalCN=0.5*round(median(2*total_cn))), by=selecterID]
+}
+
+#' @export
+get_changepoints_from_breakpoint_list <- function(segmentation_dt, sample_dt, breakpoints, method = "clonal", region_bounds = NULL, use_tetraploid_copynumber = FALSE) {
+    # Activate only the breakpoints in the breakpoints list
+    # ACTIVATION
+    # 1) Divide the data into segments that run between each activated breakpoint
+    # 2) For each segment:
+    #   a) Calculate the median total copy number
+    #   b) Assign either a clonal or subclonal copy number call based on the median
+    # 3) Retrieve only activated breakpoints that also induce a copy number change
+    # RESOLUTION
+    # 4) Divide the data into segments that run between each activated changepoint
+    # 5) For each segment:
+    #   a) Calculate the median total copy number
+    #   b) Assign either a clonal or subclonal copy number call based on the median
+
+    if (!(method %in% c("clonal", "subclonal"))) {
+        stop("Method should be one of 'clonal' or 'subclonal'")
+    }
+
+    # 1) & 2)
+    segment_selecter <- make_selecter(segmentation_dt, breakpoints)
+    activated_segment_stats <- do_segment_calculation(sample_dt, segment_selecter, region_bounds, use_tetraploid_copynumber = use_tetraploid_copynumber)
+
+    # 3)
+    if (method == "clonal") {
+        changepoints <- activated_segment_stats[clonalCN != shift(clonalCN, type = "lag"), c(1, minSegmentID)]
+    } else {
+        changepoints <- activated_segment_stats[subclonalCN != shift(subclonalCN, type = "lag"), c(1, minSegmentID)]
+    }
+
+    # 4) & 5)
+    segment_selecter <- make_selecter(segmentation_dt, changepoints)
+    changepoint_segment_stats <- do_segment_calculation(sample_dt, segment_selecter, region_bounds, use_tetraploid_copynumber = use_tetraploid_copynumber)
+
+    return (list(active_breakpoints = breakpoints,
+                 changepoints = changepoints,
+                 active_breakpoint_stats = activated_segment_stats,
+                 changepoint_stats = changepoint_segment_stats,
+                 method = method,
+                 region = region_bounds))
+}
+
+median_shift_approved_breakpoints <- function(samplenames, segmentation_dt, samples_list, input_breakpoints, median_threshold = 0.3, method = "subclonal") {
+    if (!(method %in% c("clonal", "subclonal"))) {
+        stop("Method should be one of 'clonal' or 'subclonal'")
+    }
+
+    # For each sample, get the size of the median shift at each changepoint
+    pb <- progress_bar$new(format = "Median shift filter: scanning samples [:bar] :what :percent eta: :eta",
+                           total = length(samplenames),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(samplenames))
+    bks <- vector("integer")
+    sample_bks <- list()
+    for (samplename_ in samplenames) {
+        changepoints <- get_changepoints_from_breakpoint_list(segmentation_dt,
+                                                              samples_list[[samplename_]],
+                                                              input_breakpoints,
+                                                              method,
+                                                              region_bounds = NULL,
+                                                              use_tetraploid_copynumber = FALSE)
+        changepoints$changepoint_stats[, medianShift := abs(medianCN - shift(medianCN, type = "lag"))]
+        approved <- changepoints$changepoint_stats[is.na(medianShift) | medianShift > median_threshold, minSegmentID]
+        sample_bks[[samplename_]] <- approved
+        bks <- c(bks, approved)
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+    }
+    approved_breaks <- unique(sort(bks))
+    return (list(all=approved_breaks, by_sample=sample_bks))
+}
+
+#' @export
+median_shift_filter <- function(samplenames, segmentation_dt, samples_list, calls_to_filter, calls_to_update, median_threshold = 0.3, method = "subclonal") {
+    if (!(method %in% c("clonal", "subclonal"))) {
+        stop("Method should be one of 'clonal' or 'subclonal'")
+    }
+
+    # Approve the breakpoints using the median filter
+    approved_tet_bks <- median_shift_approved_breakpoints(samplenames, segmentation_dt, samples_list, get_all_breakpoints(calls_to_filter), median_threshold, method)
+    calls_median_filtered <- copy(calls_to_update)
+
+    pb <- progress_bar$new(format = "Median shift filter: updating calls [:bar] :what :percent eta: :eta",
+                           total = length(samplenames),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(samplenames))
+
+    for (samplename_ in samplenames) {
+        calls_median_filtered <- update_calls(calls_median_filtered, samples_list, samplename_, approved_tet_bks$by_sample[[samplename_]], segmentation_dt, method)
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+    }
+    return (calls_median_filtered)
+}
+
+#' 1) Take a subset of samples
+#' 2) Scan subset for potential new subclonal breakpoints
+#' 3) Update the calls table for the subset (possibly augmented subset) using the new breakpoints
+#' 4) Median-Shift filter the calls
+#' 5) Adjacent-Segments filter the calls (optional)
+#' @export
+subclonal_search_pipeline <- function(samples_to_search, samples_to_update, input_calls, lookup_table, samples_list, segmentation_dt, effect_size_threshold = 0.3, update_method = "subclonal", do_adjacent_segments_filter = FALSE) {
+    initial_breakpoints <- get_all_breakpoints(input_calls)
+    new_breakpoints <- get_subclonal_breakpoints(input_calls,
+                                                 lookup_table,
+                                                 samples_to_search=samples_to_search,
+                                                 samples_to_exclude=NULL,
+                                                 effect_size_threshold)
+    union_of_breakpoints <- sort(union(existing_breakpoints, new_breakpoints))
+
+    augmented_calls <- update_calls(input_calls,
+                                    samples_list,
+                                    samples_to_update,
+                                    union_of_breakpoints,
+                                    segmentation_dt,
+                                    method = update_method)
+
+    filtered_calls <- median_shift_filter(samples_to_update,
+                                          segmentation_dt,
+                                          samples_list,
+                                          augmented_calls,
+                                          input_calls,
+                                          median_threshold = effect_size_threshold,
+                                          method = update_method)
+
+    if (do_adjacent_segments_filter) {
+        filtered_calls <- adjacent_segments_filter(samples_list,
+                                                   filtered_calls,
+                                                   lookup_table,
+                                                   samplenames = samples_to_update,
+                                                   threshold = effect_size_threshold,
+                                                   method = update_method)
+    }
+
+    return (filtered_calls)
 }

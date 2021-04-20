@@ -8,14 +8,16 @@ adjacent_segments_filter(
   samples_list,
   comp_table,
   breakpoint_lookup_table,
-  threshold = 0.6
+  samplenames = NULL,
+  threshold = 0.6,
+  method = "clonal"
 )
 }
 \arguments{
 \item{samples_list}{List of data.tables for each sample. Data tables should
 already be marked with segment IDs of the initial segmentation.}
 
-\item{comp_table}{Table comparing the segment means for each sample in the set.
+\item{comp_table}{Table comparing the segment medians for each sample in the set.
 Should contain entries for each sample in the samples list. Can be created using
 `make_comparison_table(samples_list)`, and can be further filtered with
 `pairwise_filter(comp_table)`.}
