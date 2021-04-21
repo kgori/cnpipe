@@ -681,7 +681,7 @@ get_genotyping_breakpoints_for_sample <- function(comp_table, all_breakpoints, s
 #' @export
 get_all_breakpoints <- function(comp_table, samplenames = NULL) {
     if (is.null(samplenames)) {
-        samplenames <- sub("\\.totalCN$", "", grep("\\.totalCN", colnames(input_calls), value = TRUE))
+        samplenames <- sub("\\.totalCN$", "", grep("\\.totalCN", colnames(comp_table), value = TRUE))
         samplenames <- samplenames[samplenames != "mode"]
     }
     all_bks <- vector("integer")
@@ -900,7 +900,7 @@ median_shift_filter <- function(samplenames, segmentation_dt, samples_list, call
 #' 5) Adjacent-Segments filter the calls (optional)
 #' @export
 subclonal_search_pipeline <- function(samples_to_search, samples_to_update, input_calls, lookup_table, samples_list, segmentation_dt, effect_size_threshold = 0.3, update_method = "subclonal", do_adjacent_segments_filter = FALSE) {
-    initial_breakpoints <- get_all_breakpoints(input_calls)
+    existing_breakpoints <- get_all_breakpoints(input_calls)
     new_breakpoints <- get_subclonal_breakpoints(input_calls,
                                                  lookup_table,
                                                  samples_to_search=samples_to_search,
