@@ -840,7 +840,31 @@ get_changepoints_from_breakpoint_list <- function(segmentation_dt, sample_dt, br
                  region = region_bounds))
 }
 
-median_shift_approved_breakpoints <- function(samplenames, segmentation_dt, samples_list, input_breakpoints, median_threshold = 0.3, method = "subclonal") {
+#' Updates the copynumber calls in calls_dt for the subset of samples in samplenames,
+#' using the provided set of breakpoints
+update_calls <- function(calls_dt, samples_list, samplenames, breakpoints, segmentation_dt, use_tetraploid_copynumber = FALSE, method = "subclonal") {
+    if (!(method %in% c("clonal", "subclonal"))) {
+        stop("Method should be one of 'clonal' or 'subclonal'")
+    }
+
+    updated_calls <- copy(calls_dt)
+
+    selecter <- make_selecter(segmentation_dt, breakpoints)
+    pb <- progress_bar$new(format = "Updating calls [:bar] :what :percent eta: :eta",
+                           total = length(samplenames),
+                           clear = FALSE,
+                           width = 80)
+    longest_label <- max(nchar(samplenames))
+    for (samplename_ in samplenames) {
+        pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
+        new_calls <- make_calls_for_sample(samples_list[[samplename_]], selecter, use_tetraploid_copynumber, method)
+        updated_calls[new_calls, (paste0(samplename_, ".totalCN")) := i.call, on = "segmentID"]
+    }
+
+    return (updated_calls)
+}
+
+median_shift_approved_breakpoints <- function(samplenames, segmentation_dt, samples_list, input_breakpoints, use_tetraploid_copynumber = FALSE, median_threshold = 0.3, method = "subclonal") {
     if (!(method %in% c("clonal", "subclonal"))) {
         stop("Method should be one of 'clonal' or 'subclonal'")
     }
@@ -859,7 +883,7 @@ median_shift_approved_breakpoints <- function(samplenames, segmentation_dt, samp
                                                               input_breakpoints,
                                                               method,
                                                               region_bounds = NULL,
-                                                              use_tetraploid_copynumber = FALSE)
+                                                              use_tetraploid_copynumber = use_tetraploid_copynumber)
         changepoints$changepoint_stats[, medianShift := abs(medianCN - shift(medianCN, type = "lag"))]
         approved <- changepoints$changepoint_stats[is.na(medianShift) | medianShift > median_threshold, minSegmentID]
         sample_bks[[samplename_]] <- approved
@@ -871,13 +895,13 @@ median_shift_approved_breakpoints <- function(samplenames, segmentation_dt, samp
 }
 
 #' @export
-median_shift_filter <- function(samplenames, segmentation_dt, samples_list, calls_to_filter, calls_to_update, median_threshold = 0.3, method = "subclonal") {
+median_shift_filter <- function(samplenames, segmentation_dt, samples_list, calls_to_filter, calls_to_update, use_tetraploid_copynumber, median_threshold = 0.3, method = "subclonal") {
     if (!(method %in% c("clonal", "subclonal"))) {
         stop("Method should be one of 'clonal' or 'subclonal'")
     }
 
     # Approve the breakpoints using the median filter
-    approved_tet_bks <- median_shift_approved_breakpoints(samplenames, segmentation_dt, samples_list, get_all_breakpoints(calls_to_filter), median_threshold, method)
+    approved_tet_bks <- median_shift_approved_breakpoints(samplenames, segmentation_dt, samples_list, get_all_breakpoints(calls_to_filter), use_tetraploid_copynumber = use_tetraploid_copynumber, median_threshold, method)
     calls_median_filtered <- copy(calls_to_update)
 
     pb <- progress_bar$new(format = "Median shift filter: updating calls [:bar] :what :percent eta: :eta",
@@ -887,7 +911,7 @@ median_shift_filter <- function(samplenames, segmentation_dt, samples_list, call
     longest_label <- max(nchar(samplenames))
 
     for (samplename_ in samplenames) {
-        calls_median_filtered <- update_calls(calls_median_filtered, samples_list, samplename_, approved_tet_bks$by_sample[[samplename_]], segmentation_dt, method)
+        calls_median_filtered <- update_calls(calls_median_filtered, samples_list, samplename_, approved_tet_bks$by_sample[[samplename_]], segmentation_dt, use_tetraploid_copynumber = use_tetraploid_copynumber, method)
         pb$tick(tokens=list(what=paste(c(samplename_, rep(' ', longest_label - nchar(samplename_))), collapse="")))
     }
     return (calls_median_filtered)
@@ -913,6 +937,7 @@ subclonal_search_pipeline <- function(samples_to_search, samples_to_update, inpu
                                     samples_to_update,
                                     union_of_breakpoints,
                                     segmentation_dt,
+                                    use_tetraploid_copynumber = FALSE,
                                     method = update_method)
 
     filtered_calls <- median_shift_filter(samples_to_update,
@@ -920,6 +945,7 @@ subclonal_search_pipeline <- function(samples_to_search, samples_to_update, inpu
                                           samples_list,
                                           augmented_calls,
                                           input_calls,
+                                          use_tetraploid_copynumber = FALSE,
                                           median_threshold = effect_size_threshold,
                                           method = update_method)
 
