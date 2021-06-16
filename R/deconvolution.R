@@ -436,7 +436,8 @@ fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf,
     return (vaf)
 }
 
-#' Fast approximate estimate of pure_tumour_vaf from a mixed sample
+#' Fast approximate estimate of log-odds ratio from a mixed sample,
+#' with the host converted to heterozygous diploid
 #' @param total_readdepth Tumour sample total read depth
 #' @param alt_readdepth Tumour sample alt read depth
 #' @param logr Tumour sample logR
@@ -451,8 +452,11 @@ fast_estimate_tumour_logodds <- function(total_readdepth, alt_readdepth, logr, h
     A <- alt_readdepth
     L <- result$L
     K <- result$K
-    odds <- ((T-K-A+L+pseudocount)*(L+pseudocount)) / ((K-L+pseudocount) * (A-L+pseudocount))
-    return (log(odds))
+    a = K/2 + pseudocount
+    b = a
+    c = T - K - A + L + pseudocount
+    d = A - L + pseudocount
+    return (log((a*d) / (b*c)))
 }
 
 #' Fast approximate estimate of pure_tumour_vaf from a mixed sample
