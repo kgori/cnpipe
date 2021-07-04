@@ -459,6 +459,33 @@ fast_estimate_tumour_logodds <- function(total_readdepth, alt_readdepth, logr, h
     return (log((a*d) / (b*c)))
 }
 
+#' Fast approximate estimate of log-odds ratio, and its variance, from a mixed sample,
+#' with the host converted to heterozygous diploid.
+#' @param total_readdepth Tumour sample total read depth
+#' @param alt_readdepth Tumour sample alt read depth
+#' @param logr Tumour sample logR
+#' @param hvaf Host sample VAF
+#' @param purity Estimated purity of tumour sample
+#' @param pseudocount Avoid infinite log-odds by adding a pseudocount to each
+#'     cell of the contingency table. Default = 0.5 (same as Facets).
+#' @export
+fast_estimate_tumour_logodds_and_variance <- function(total_readdepth, alt_readdepth, logr, hvaf, purity, pseudocount=0.5) {
+    result <- .estimate_contingency_table(total_readdepth, alt_readdepth, logr, hvaf, purity)
+    T <- total_readdepth
+    A <- alt_readdepth
+    L <- result$L
+    K <- result$K
+    a = K/2 + pseudocount
+    b = a
+    c = T - K - A + L + pseudocount
+    d = A - L + pseudocount
+    logodds <- (log((a*d) / (b*c)))
+    var_logodds <- 1/a + 1/b + 1/c + 1/d
+    return (list(logodds = logodds, var_logodds = var_logodds))
+}
+#log(rcmat[,1]+0.5)a - log(rcmat[,2]+0.5)b - log(rcmat[,3]+0.5)c + log(rcmat[,4]+0.5)d
+#(1/(rcmat[,1]+0.5) + 1/(rcmat[,2]+0.5) + 1/(rcmat[,3]+0.5) + 1/(rcmat[,4]+0.5))
+
 #' Fast approximate estimate of pure_tumour_vaf from a mixed sample
 #' @param total_readdepth Tumour sample total read depth
 #' @param alt_readdepth Tumour sample alt read depth
