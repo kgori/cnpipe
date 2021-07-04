@@ -47,3 +47,57 @@ multipcf <- function(ys, gamma = 40) {
         anow[1:(k+1)] <- aprev[1:(k+1), ] + ys[k,]
     }
 }
+
+
+#' Applies a prefilter to a PCF segmentation
+#' @param dta The data that was segmented
+#' @param seg The result of segmenting dta
+#' @return A filtered segmentation
+prefilter <- function(dta, seg, pthresh=0.3, med_diff=0.5) {
+    stopifnot(pthresh >= 0)
+    stopifnot(pthresh <= 1)
+    stopifnot(med_diff %in% c(0.5, 1.0))
+    stopifnot("total_cn_tetraploid" %in% colnames(dta))
+    stopifnot("START" %in% colnames(dta))
+
+    # Annotate the table (dta) with the segment ID (bk)
+    dta[, bk := rep(seq(1, seg$nIntervals), times = seg$Lengde)]
+    dta[, segment_median := median(updated_cn), by = bk]
+
+    # Collect some stats for each segment, and its successor
+    test_table <- dta[, .(START=min(START), mn=mean(updated_cn), sqsem=var(updated_cn) / .N, imdn=round(median(updated_cn)), mdn=0.5*round(2*median(updated_cn)), N=.N), by = bk]
+    test_table[, c("bk_next", "mn_next", "sqsem_next", "imdn_next", "mdn_next", "N_next") := shift(.(bk, mn, sqsem, imdn, mdn, N), type="lead")]
+
+    # Probability that the difference of the means is <0.5 by chance
+    test_table[, pval := pnorm(0.5, abs(mn_next - mn), sqrt(sqsem + sqsem_next))]
+
+    # Successive segment medians are different
+    test_table[, medians_differ := mdn != mdn_next]
+    test_table[, integer_medians_differ := imdn != imdn_next]
+
+    approved_breaks <- if (med_diff == 0.5) {
+        test_table[pval < pthresh & medians_differ == TRUE, bk_next]
+    } else {
+        test_table[pval < pthresh & integer_medians_differ == TRUE, bk_next]
+    }
+
+    is_breakpoint_start = dta[bk %in% approved_breaks, .(START=min(START)), by = bk]
+    dta[, tmp := 0]
+    dta[is_breakpoint_start, tmp := 1, on = c("START")]
+    dta[, filtered_seg_id := cumsum(tmp) + 1]
+    dta[, tmpI := .I]
+
+    result <- dta[, .(Lengde=.N, sta=min(tmpI), mean=mean(total_cn_tetraploid)), by = filtered_seg_id]
+    result <- list(Lengde = result[, Lengde],
+                   sta = result[, sta],
+                   mean = result[, mean],
+                   nIntervals = dta[, max(filtered_seg_id)])
+
+    dta[, tmp := NULL]
+    dta[, tmpI := NULL]
+    dta[, unfiltered_seg_id := bk]
+    dta[, bk := NULL]
+    dta[, segment_median := NULL]
+
+    return (result)
+}
