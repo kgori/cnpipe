@@ -580,3 +580,11 @@ madWins <- function (x, tau, k)
     outliers[x < xwin] <- -1
     return(list(ywin = xwin, sdev = SD, outliers = outliers))
 }
+
+#' Copied from ASCAT
+psi <- function(x, z) {
+    xwin <- x
+    xwin[x < -z] <- -z
+    xwin[x > z] <- z
+    return(xwin)
+}
