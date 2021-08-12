@@ -588,3 +588,11 @@ psi <- function(x, z) {
     xwin[x > z] <- z
     return(xwin)
 }
+
+#' Winsorizes an input vector. Winsorizing means to clip outlier values to a level closer to the central tendency of the distribution.
+#' @param tau Multiplier of the local standard deviation: smaller values result in a stronger clipping effect
+#' @param k The local window size
+#' @export
+winsorize <- function(x, tau=2.5, k=25) {
+    madWins(x, tau, k)$ywin
+}
