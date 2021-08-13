@@ -960,3 +960,51 @@ subclonal_search_pipeline <- function(samples_to_search, samples_to_update, inpu
 
     return (filtered_calls)
 }
+
+#' Uses TOST (two one-sided tests) to check if the copy number data within two adjacent segments
+#' differs by at least `tol`, at a significance level of `alpha`.
+#' If this is true, then the breakpoint will be retained in the "approved_breaks" list, otherwise
+#' it is removed from the segmentation, and the segmentation is rebuilt.
+tost_prefilter <- function(dta, seg, tol=0.3, alpha=0.05) {
+    # Returns TRUE if the distributions a and b are equivalent within tolerance `tol`
+    tost.equivalent <- function(a, b, tol = 0.5, alpha = 0.05) {
+        test1 <- t.test(a, b, mu = tol, var.equal=TRUE, alternative = "less")$p.value
+        test2 <- t.test(a, b, mu = -tol, var.equal=TRUE, alternative = "greater")$p.value
+        test1 < alpha & test2 < alpha
+    }
+
+    dta[, bk := rep(seq(1, seg$nIntervals), times = seg$Lengde)]
+    dta[, segment_median := median(total_cn), by = bk]
+
+    nseg <- dta[, max(bk)]
+
+    if (nseg > 1) {
+        tost_results <- sapply(1:(nseg-1), function(i) {
+            result <- tost.equivalent(dta[segment_id==i, total_cn],
+                                      dta[segment_id==(i+1), total_cn],
+                                      tol, alpha)
+            return (result)
+        })
+        approved_breaks <- (2:nseg)[!tost_results]
+    } else {
+        approved_breaks <- 1
+    }
+
+    dta[is_breakpoint_start, tmp := 1, on = c("START")]
+    dta[, filtered_segment_id := cumsum(tmp) + 1]
+    dta[, tmpI := .I]
+
+    result <- dta[, .(Lengde=.N, sta=min(tmpI), mean=mean(total_cn)), by = filtered_segment_id]
+    result <- list(Lengde = result[, Lengde],
+                   sta = result[, sta],
+                   mean = result[, mean],
+                   nIntervals = dta[, max(filtered_segment_id)])
+
+    dta[, tmp := NULL]
+    dta[, tmpI := NULL]
+    dta[, unfiltered_segment_id := bk]
+    dta[, bk := NULL]
+    dta[, segment_median := NULL]
+
+    return (result)
+}
