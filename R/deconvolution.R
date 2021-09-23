@@ -429,11 +429,10 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
 #' @param purity Estimated purity of tumour sample
 #' @export
 fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
-    result <- .estimate_contingency_table(total_readdepth, alt_readdepth, logr, hvaf, purity)
-    T <- total_readdepth
-    A <- alt_readdepth
-    vaf <- (A-result$L) / (T-result$K)
-    return (vaf)
+    mixed_vaf <- alt_readdepth / total_readdepth
+    R <- 2^logr
+    p <- R * purity / (R * purity + (1 - purity)) # probability that a read in the mixture came from the tumour
+    pmin(1, pmax(0, (mixed_vaf - hvaf * (1 - p)) / p))
 }
 
 #' Fast approximate estimate of log-odds ratio from a mixed sample,
