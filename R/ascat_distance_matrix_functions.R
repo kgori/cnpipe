@@ -93,34 +93,34 @@ make_distance_matrix <- function(ascat_data) {
 #' Find peaks in the ASCAT sunrise plot data.
 #' @param dm = Distance matrix from ascat_result$distance_matrix
 #' @param nbr_size = Neighbourhood size for peakfinding (e.g. 5x5 matrix centred on peak)
-#' @importFrom "raster" raster extent focal
+# @importFrom "raster" raster extent focal
 #' @export
-peakfind <- function(dm, nbr_size=5) {
-    ## Convert distance matrix to a raster object
-    # The DM is transposed and reversed along 1 axis to make sure the
-    # ploidy and purity axes line up with the data in the raster object
-    r <- raster(t(log(dm))[rev(1:ncol(dm)), 1:nrow(dm)])
-    r@extent <- extent(c(range(as.numeric(rownames(dm))),
-                          range(as.numeric(colnames(dm)))))
-
-    ## Find the minimum value within the 25-cell neighborhood of each cell
-    f <- function(X) min(X, na.rm=TRUE)
-    ww <- matrix(1, nrow = nbr_size, ncol = nbr_size) ## Weight matrix for cells in moving window
-    localmin <- focal(r, fun = f, w = ww, pad = TRUE, padValue = NA)
-
-    ## Does each cell have the maximum value in its neighborhood?
-    r2 <- r == localmin
-
-    ## Get x-y coordinates of those cells that are local maxima
-    maxXY <- xyFromCell(r2, Which(r2==1, cells=TRUE))
-    colnames(maxXY) <- c("psi", "rho")
-    maxXY <- maxXY[maxXY[, 2] <= 1, , drop = FALSE] # filter out any purity estimates > 1
-    maxXY <- cbind(maxXY, apply(maxXY, 1, function(r) interpolate_peak(dm, r[1], r[2])))
-    colnames(maxXY)[3] <- "fit"
-    maxXY <- maxXY[order(maxXY[, 3]), , drop = FALSE] # sort by goodness of fit
-
-    list(maxXY, r, r2)
-}
+# peakfind <- function(dm, nbr_size=5) {
+#     ## Convert distance matrix to a raster object
+#     # The DM is transposed and reversed along 1 axis to make sure the
+#     # ploidy and purity axes line up with the data in the raster object
+#     r <- raster(t(log(dm))[rev(1:ncol(dm)), 1:nrow(dm)])
+#     r@extent <- extent(c(range(as.numeric(rownames(dm))),
+#                           range(as.numeric(colnames(dm)))))
+#
+#     ## Find the minimum value within the 25-cell neighborhood of each cell
+#     f <- function(X) min(X, na.rm=TRUE)
+#     ww <- matrix(1, nrow = nbr_size, ncol = nbr_size) ## Weight matrix for cells in moving window
+#     localmin <- focal(r, fun = f, w = ww, pad = TRUE, padValue = NA)
+#
+#     ## Does each cell have the maximum value in its neighborhood?
+#     r2 <- r == localmin
+#
+#     ## Get x-y coordinates of those cells that are local maxima
+#     maxXY <- xyFromCell(r2, Which(r2==1, cells=TRUE))
+#     colnames(maxXY) <- c("psi", "rho")
+#     maxXY <- maxXY[maxXY[, 2] <= 1, , drop = FALSE] # filter out any purity estimates > 1
+#     maxXY <- cbind(maxXY, apply(maxXY, 1, function(r) interpolate_peak(dm, r[1], r[2])))
+#     colnames(maxXY)[3] <- "fit"
+#     maxXY <- maxXY[order(maxXY[, 3]), , drop = FALSE] # sort by goodness of fit
+#
+#     list(maxXY, r, r2)
+# }
 
 find_box_index <- function(dm, psi, rho) {
     x0 <- findInterval(psi, as.numeric(rownames(dm)))
