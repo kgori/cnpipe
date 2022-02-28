@@ -428,7 +428,7 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
 #' @param hvaf Host sample VAF
 #' @param purity Estimated purity of tumour sample
 #' @export
-fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
+fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity, ploidy, host_cn, host_ploidy = 2.0) {
     mixed_vaf <- alt_readdepth / total_readdepth
     R <- 2^logr
     lhs <- R * (host_ploidy * (1-purity) + ploidy * purity)
