@@ -431,7 +431,8 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
 fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
     mixed_vaf <- alt_readdepth / total_readdepth
     R <- 2^logr
-    p <- R * purity / (R * purity + (1 - purity)) # probability that a read in the mixture came from the tumour
+    lhs <- R * (host_ploidy * (1-purity) + ploidy * purity)
+    p <- (lhs - host_cn * (1-purity)) / lhs # probability that a read in the mixture came from the tumour
     pmin(1, pmax(0, (mixed_vaf - hvaf * (1 - p)) / p))
 }
 
