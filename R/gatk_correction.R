@@ -205,3 +205,31 @@ gatk_correct <- function(data, decomp, n_singular_values, verbose = TRUE) {
 
     list(denoised = t_denoised, standardized = t_standardized)
 }
+
+
+#' GATK-style GC-correction of read count information
+#' @importFrom "data.table" data.table
+#' @export
+gatk_gc_correct <- function(read_counts, gc_content, num_bins = 101, correlation_length = 0.02) {
+    total <- sum(read_counts)
+    which_bin <- round(gc_content * (num_bins - 1)) + 1
+    correlation_decay_rate <- 1.0 / (correlation_length * num_bins)
+
+    dt <- data.table(rc = read_counts, n = which_bin, gc = gc_content)
+    dt <- dt[, .(med = median(rc), size = .N, gc = gc[1]), by = n]
+    dt <- rbind(
+        dt,
+        data.table(n = setdiff(seq(1, num_bins), dt[, n]),
+                   med = 1, size = 0, gc = setdiff(seq(1, num_bins), dt[, n]) / (num_bins - 1)),
+        fill = TRUE
+    )[order(n)]
+
+    correction_factors <- sapply(dt[, n], function(bin) {
+        weights <- dt[, size * exp(-abs(bin - n) * correlation_decay_rate)]
+        sum(weights) / (weights %*% dt[, med])[1]
+    })
+
+    scaled <- read_counts * correction_factors[which_bin]
+    scaled * total / sum(scaled)
+}
+
