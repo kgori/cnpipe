@@ -347,7 +347,7 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
 #' @param logr Tumour sample logR
 #' @param hvaf Host sample VAF
 #' @param purity Estimated purity of tumour sample
-.estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
+.estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr, hvaf, purity, ploidy, host_cn, host_ploidy = 2) {
     # Aim: find values for the empty cells (a), (b), (c), (d), (e), (f)
     # in the read count contingency table below. A and T are observed values, and R = T - A.
     # The other values need to be estimated, subject to the constraint that they are all
@@ -373,7 +373,10 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
     A <- alt_readdepth
 
     # probability that a read comes from the host (P(R=H))
-    p_1 <- (1 - purity) / (r * purity + 1 - purity)
+    R <- 2^logr
+    lhs <- R * host_ploidy * (1-purity) + R * ploidy * purity
+    p <- (lhs - host_cn * (1-purity)) / lhs
+    p_1 <- pmin(1, pmax(0, 1 - p))
 
     # probability that a host read is an Alt allele (P(R=A|R=H))
     p_2 <- hvaf
@@ -428,10 +431,14 @@ v.get_sequence <- function(refbase, altbase, tumour_ref, tumour_alt, host_ref, h
 #' @param hvaf Host sample VAF
 #' @param purity Estimated purity of tumour sample
 #' @export
-fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity) {
+fast_estimate_tumour_vaf <- function(total_readdepth, alt_readdepth, logr, hvaf, purity, ploidy, host_cn, host_ploidy = 2) {
     mixed_vaf <- alt_readdepth / total_readdepth
     R <- 2^logr
-    p <- R * purity / (R * purity + (1 - purity)) # probability that a read in the mixture came from the tumour
+    lhs <- R * host_ploidy * (1-purity) + R * ploidy * purity
+    p <- (lhs - host_cn * (1-purity)) / lhs # probability that a read in the mixture came from the tumour
+    # p = total_cn * purity / (total_cn * purity + host_cn * (1 - purity))
+    # simplified, independent of ploidy if we have tumour CN (Nt):
+    # (host_cn * (1 - purity) * (mixed_vaf - hvaf) + mixed_vaf * Nt * purity) / (Nt * purity)
     pmin(1, pmax(0, (mixed_vaf - hvaf * (1 - p)) / p))
 }
 
