@@ -392,8 +392,8 @@ idealised_vaf <- function(ta, tb, ha, hb, purity) {
 }
 
 #' @export
-idealised_logr <- function(ta, tb, ha, hb, purity, ploidy, host_ploidy = 2) {
-    log2(((ha+hb) * (1-purity) + (ta+tb) * purity) / (((1-purity) * host_ploidy + purity * ploidy)))
+idealised_logr <- function(tn, hn, purity, ploidy, host_ploidy = 2) {
+    log2((hn * (1-purity) + tn * purity) / (((1-purity) * host_ploidy + purity * ploidy)))
 }
 
 replace_na <- function(val, default) {
@@ -489,35 +489,43 @@ annotate_ascat_segments <- function(breaks) {
 }
 
 
+disjoin <- function(datatable, chromcol = NULL, startcol = NULL, endcol = NULL) {
+    if (is.null(chromcol)) chromcol <- colnames(datatable)[1]
+    if (is.null(startcol)) startcol <- colnames(datatable)[2]
+    if (is.null(endcol)) endcol <- colnames(datatable)[3]
+
+    .disjoin.chr <- function(dt) {
+        # data.table disjoin
+        starts <- unique(dt[, .SD[[1]], .SDcols = startcol])
+        ends <- unique(dt[, .SD[[1]], .SDcols = endcol])
+        adjstart <- head(sort(unique(c(starts, ends + 1))), -1)
+        adjend <- tail(sort(unique(c(ends, starts - 1))), -1)
+        adj <- data.table(adjstart, adjend)
+        colnames(adj) <- c(startcol, endcol)
+        setkeyv(adj, colnames(adj))
+        unique(foverlaps(dt, adj, nomatch=0L, minoverlap=1L),
+               by = colnames(adj))[, .SD, .SDcols = c(startcol, endcol)]
+    }
+    # Data table complains that .SD is locked if startpos/endpos are integers
+    datatable[, c(startcol, endcol) := lapply(.SD, as.numeric), .SDcols = c(startcol, endcol)]
+
+    res <- datatable[, .disjoin.chr(.SD), by = chromcol, .SDcols = c(startcol, endcol)]
+
+    # Set sort order
+    chroms <- stringr::str_sort(unique(res[, .SD[[1]], .SDcols = chromcol]))
+    res[, (chromcol) := factor(.SD[[1]], levels = chroms), .SDcols = chromcol]
+    setorderv(res, c(chromcol, startcol, endcol))
+    res$ID <- res[, .I]
+    setkeyv(res, c(chromcol, startcol, endcol))
+    return(res)
+}
+
 #' Create a new table of segments that includes every breakpoint from every sample in
 #' `datatable`, where datatable = ascat_result$segments
 #' @importFrom "stringr" str_sort
 #' @export
 disjoin_ascat_segments <- function(datatable) {
-    .disjoin.chr <- function(dt) {
-        # data.table disjoin
-        starts <- unique(dt$startpos)
-        ends <- unique(dt$endpos)
-        adjstart <- head(sort(unique(c(starts, ends + 1))), -1)
-        adjend <- tail(sort(unique(c(ends, starts - 1))), -1)
-        adj <- data.table(startpos=adjstart, endpos=adjend, width=adjend - adjstart + 1)
-        setkey(adj, startpos, endpos)
-        unique(foverlaps(dt, adj, nomatch=0L, minoverlap=1L),
-               by = c("startpos", "endpos"))[, -c("i.startpos", "i.endpos")]
-    }
-    # Data table complains that .SD is locked if startpos/endpos are integers
-    datatable[, c("startpos", "endpos") := lapply(.SD, as.numeric), .SDcols = c("startpos", "endpos")]
-
-    res <- datatable[, .disjoin.chr(.SD), by = chr, .SDcols = c("startpos", "endpos")]
-
-    # Set sort order
-    chroms <- stringr::str_sort(unique(res$chr))
-    res[, chr := factor(chr, levels = chroms)]
-    setorder(res, chr, startpos, endpos)
-    res[, chr := as.character(chr)]
-    res$ID <- res[, .I]
-    setkey(res, chr, startpos, endpos)
-    return(res)
+    disjoin(datatable, chromcol = "chr", startcol = "startpos", endcol = "endpos")
 }
 
 #' Post-process a disjointed segments list to remove segments that cover 0 SNPs
