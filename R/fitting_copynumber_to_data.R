@@ -6,7 +6,7 @@ fit_total_copy_number <- function(logr_data_, purity_, ploidy_, max_cn_ = 10) {
     cn_states <- seq(0, max_cn_)
     # Calculate the expected logR value for each state
     ideal_logrs <- sapply(cn_states, function(n) {
-        cnpipe::idealised_logr(n, 0, 1, 1, purity_, ploidy_)}
+        idealised_logr(n, 2, purity_, ploidy_)}
     )
 
     # Calculate the RMSE for each state
@@ -42,7 +42,7 @@ quick_fit_total_copy_number <- function(logr, purity, ploidy) {
 
     test_states <- seq(test_range[1], test_range[2], 1)
     errors <- sapply(test_states, function(i) {
-        rmse(idealised_logr(i, 0, 1, 1, purity, ploidy), logr)
+        rmse(idealised_logr(i, 2, purity, ploidy), logr)
     })
 
     return (test_states[which.min(errors)])
