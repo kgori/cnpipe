@@ -1,94 +1,5 @@
-#' Estimate the host and tumour components from a host-contaminated tumour sample
-#' @param tumour_ref number of REF reads observed in host-contaminated tumour, at current site
-#' @param tumour_alt number of ALT reads observed in host-contaminated tumour, at current site
-#' @param host_ref number of REF reads observed in matched host, at current site
-#' @param host_alt number of ALT reads observed in matched host, at current site
-#' @param logr log of ratio between tumour coverage and matched host coverage, at current site
-#' @param purity Estimate of tumour purity (aka aberrant cell count)
-#' @param plot Should a plot be drawn?
-#' @importFrom "mixtools" ellipse
-#' @return A list with the following elements:
-#' * par = optimised parameters (\eqn{p(H | A)}, \eqn{p(H | B)})
-#' * cov = estimated covariance of optimised parameters
-#'       (Fisher information - inverse of Hessian)
-#' * counts = Matrix of inferred read counts, divided by Host/Tumour, A/B-allele
-#' * pure_tumour_vaf = Estimate of tumour VAF in absence of host
-#' * pure_host_vaf = Estimate of host VAF in absence of tumour
-#' * sample_vaf_with_het_host = An estimate of what the sample VAF would be if the host were exactly
-#'   heterozygous
-#' @md
-#' @examples
-#' deconvolute(90, 15, 71, 8, 0.03670243, 0.59, FALSE)
-#' @export
-deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, plot=FALSE) {
-    # All the numerical work is done in find_mle. the rest of this function
-    # is for convenient presentation of the result.
-    .Deprecated("fast_estimate_tumour_vaf")
-    return ()
-    result <- find_mle(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity, hess = TRUE)
-
-    covariance <- solve(result$hessian)
-    counts <- count_matrix(tumour_ref, tumour_alt, result$par)
-
-    if (plot) {
-        # Compute objective over a grid
-        X <- seq(0.01, 0.99, length.out = 99)
-        Y <- seq(0.01, 0.99, length.out = 99)
-        g <- expand.grid(X, Y)
-        z <- apply(g, 1, objective)
-        g$z <- z
-
-        # Maps objective values to colours: optimum=red
-        colours <- colorRamp(c("red","white", "blue"), bias=5, space = "rgb")((z - min(z)) / (max(z - min(z))))
-        colours <- apply(colours, 1, function(x) do.call(rgb, as.list(x/255)))
-
-        layout(matrix(c(1,1,1,2), nrow=1))
-        plot(g[,1], g[,2], pch = 15, col = colours, asp = TRUE,
-             ylab = "P(source=Host|read=Ref)", xlab = "P(source=H|read=Alt)",
-             main = "Deconvolution result", cex=2,
-             xlim = c(0,1), ylim = c(0,1))
-        points(result$par[1], result$par[2], pch = 4, cex = 5, lwd=2)
-
-        # Can use points in `ell` to construct CI around tumour and host vaf estimates
-        ell<-ellipse(result$par, abs(covariance), newplot = FALSE, lty=1, lwd=2, npoints=100)
-        mats <- apply(ell, 1, count_matrix, ref=tumour_ref, alt=tumour_alt)
-        tvafs <- apply(mats, 2, function(x) x[2] / x[3])
-        hvafs <- apply(mats, 2, function(x) x[5] / x[6])
-        hvafs_min <- which.min(hvafs)
-        hvafs_max <- which.max(hvafs)
-        tvafs_min <- which.min(tvafs)
-        tvafs_max <- which.max(tvafs)
-
-        points(ell[hvafs_min, 1], ell[hvafs_min, 2], pch = 1, col = "goldenrod")
-        points(ell[hvafs_max, 1], ell[hvafs_max, 2], pch = 4, col = "goldenrod")
-        points(ell[tvafs_min, 1], ell[tvafs_min, 2], pch = 1, col = "dodgerblue")
-        points(ell[tvafs_max, 1], ell[tvafs_max, 2], pch = 4, col = "dodgerblue")
-
-        orig_vaf <- tumour_alt / (tumour_alt+tumour_ref)
-        xs <- 1:3
-        ys <- c(tumour_alt / (tumour_alt+tumour_ref), counts[2,1]/counts[3,1], counts[2,2]/counts[3,2])
-        error_bars <- matrix(c(qbeta(0.025, tumour_alt, tumour_ref), qbeta(0.975, tumour_alt, tumour_ref),
-                               tvafs[tvafs_min], tvafs[tvafs_max],
-                               hvafs[hvafs_min], hvafs[hvafs_max]), nrow = 2, ncol = 3)
-        plot(xs, ys, main = "VAF estimates", xlab=NA, ylab = "VAF", xaxt='n', type = "n", xlim = c(0.75, 3.25), ylim=c(0,1))#range(error_bars) * c(1/1.1, 1.1))
-        rect(0.975, error_bars[1,1], 1.025, error_bars[2,1], col = "seagreen", border=NA)
-        rect(1.975, error_bars[1,2], 2.025, error_bars[2,2], col = "dodgerblue", border = NA)
-        rect(2.975, error_bars[1,3], 3.025, error_bars[2,3], col = "goldenrod", border = NA)
-        abline(h=ys, col = c("seagreen", "dodgerblue", "goldenrod"), lty=3, lwd=0.5)
-        points(xs, ys, pch = 21, cex = 2, bg = c("seagreen", "dodgerblue", "goldenrod"), lwd = 2)
-        axis(1, at=1:3, labels = c("Original", "Pure tumour", "Pure host"))
-    }
-
-    list(par=result$par, cov=covariance, counts=counts,
-         pure_tumour_vaf=counts[2,1] / counts[3,1],
-         pure_host_vaf=counts[2,2] / counts[3,2],
-         sample_vaf_with_het_host=(counts[2,1] + counts[3,2] / 2) / counts[3,3])
-}
-
-
-### Fast alternatives
-
-#' Fast deconvolution of read count contingency table
+#' Fast deconvolution of read count contingency table. Used as basis of
+#' the exported fast_estimate_* functions
 #' @param total_readdepth Tumour sample total read depth
 #' @param alt_readdepth Tumour sample alt read depth
 #' @param logr Tumour sample logR
@@ -107,11 +18,11 @@ deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity
     # in the read count contingency table below. A and T are observed values, and R = T - A.
     # The other values need to be estimated, subject to the constraint that they are all
     # non-negative.
-    # (c) (referred to throughout as variable K) can be estimated as T*p_1, where p_1 is the
-    # probability that a read came from host material in the mixed tumour-host source. p_1
+    # (c) (referred to throughout as variable K) can be estimated as T*p_host, where p_host is the
+    # probability that a read came from host material in the mixed tumour-host source. p_host
     # is estimated using the tumour sample's logR (logr), and the host sample's VAF (hvaf).
-    # (b) (variable L) is estimated from (c) as K*p_2, where p_2 is the probability that
-    # a host-derived read carries the Alt allele, not the Ref allele. p_2 is equal to hvaf.
+    # (b) (variable L) is estimated from (c) as K*p_alt_given_host, where p_alt_given_host is the probability that
+    # a host-derived read carries the Alt allele, not the Ref allele. p_alt_given_host is equal to hvaf.
     # As the table has 2 degrees of freedom, once values are estimated for (b) and (c), the
     # other missing values are filled in trivially.
 
@@ -123,27 +34,28 @@ deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity
     #'  -------|-------|-------|-------
     #'         |   R   |   A   |   T
 
+    hvaf <- host_alt_readdepth / host_total_readdepth
     hvaf[is.nan(hvaf)] <- 0
     r <- 2^logr
     T <- total_readdepth
     A <- alt_readdepth
 
     # probability that a read comes from the host (P(R=H))
-    p_1 <- 1 - prob_read_came_from_tumour(logr, purity, ploidy, host_ploidy)
+    p_host <- prob_read_came_from_host(logr, purity, ploidy, host_ploidy)
 
     # probability that a host read is an Alt allele (P(R=A|R=H))
-    p_2 <- host_alt_readdepth / host_total_readdepth
+    p_alt_given_host <- hvaf
 
     # Estimate K (number of host reads) and L (number of host reads that are Alt),
     # subject to the constraints A - L >= 0, and (T - K) - (A - L) >= 0
 
-    K <- T*p_1
-    L <- K*p_2
+    K <- T*p_host
+    L <- K*p_alt_given_host
 
     # If constraints are broken, then find the optimal least squares solution to the
     # constrained equation, using Lagrangian multipliers.
     # Least-squares estimate for K and L:
-    # f(K, L) = (K - T*p_1)^2 + (L - K*p_2)
+    # f(K, L) = (K - T*p_host)^2 + (L - K*p_alt_given_host)
     #
     # Constraints:
     # g1(L, a) => A - L - a^2 = 0
@@ -157,14 +69,14 @@ deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity
     # Broken constraint 1: Too many Alt reads in the host
     ix <- (L > A)
 
-    K[ix] <- (A[ix]*p_2[ix] + T[ix]*p_1[ix]) / (p_2[ix]^2 + 1)
+    K[ix] <- (A[ix]*p_alt_given_host[ix] + T[ix]*p_host[ix]) / (p_alt_given_host[ix]^2 + 1)
     L[ix] <- A[ix]
 
     # Broken constraint 2: VAF out of bounds [ignore if T==0 - these will give NA in the index, which breaks]
     iy <- (T > 0) & ((((A-L) / (T-K)) > 1) | (((A-L) / (T-K)) < 0) | is.nan((A-L) / (T-K)))
-    denom <- (p_2[iy]^2 - 2 * p_2[iy] + 2)
-    K[iy] <- (A[iy] * (p_2[iy] - 1) + T[iy] * (p_1[iy] - p_2[iy] + 1)) / denom
-    L[iy] <- (A[iy] * (p_2[iy]^2 - p_2[iy] + 1) + T[iy] * (p_1[iy] - p_2[iy]^2 + p_2[iy] - 1) ) / denom
+    denom <- (p_alt_given_host[iy]^2 - 2 * p_alt_given_host[iy] + 2)
+    K[iy] <- (A[iy] * (p_alt_given_host[iy] - 1) + T[iy] * (p_host[iy] - p_alt_given_host[iy] + 1)) / denom
+    L[iy] <- (A[iy] * (p_alt_given_host[iy]^2 - p_alt_given_host[iy] + 1) + T[iy] * (p_host[iy] - p_alt_given_host[iy]^2 + p_alt_given_host[iy] - 1) ) / denom
 
     # Contingency table :
     #'     |  Ref  |  Alt  |
@@ -182,7 +94,6 @@ deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity
 #' @param purity Tumour sample purity
 #' @param ploidy Tumour ploidy (ploidy of pure tumour)
 #' @param host_ploidy Host ploidy estimate (almost always will be 2)
-#' @export
 #' Derivation:
 #' Expected proportion of tumour reads in a mixed sample, where Nt is
 #' underlying tumour copy number state, Nh is host copy state, and p
@@ -203,6 +114,7 @@ deconvolute <- function(tumour_ref, tumour_alt, host_ref, host_alt, logr, purity
 #'           -----------------------------   (4)
 #'                       ψh
 #' Substitute (3) and (4) into (1) to obtain the result.
+#' @export
 prob_read_came_from_tumour <- function(logr, purity, ploidy, host_ploidy) {
     stopifnot(purity >= 0 & purity <= 1)
     stopifnot(ploidy > 0)
@@ -317,46 +229,97 @@ fast_estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr
     A <- alt_readdepth
     L <- result$L
     K <- result$K
-    matrix(c(K - L, T - K - A + L, T - A, L, A - L, A, K, T - K, T), nrow = 3)
+    matrix(c(A - L, T - A - K + L, T - K,
+             L, K - L, K,
+             A, T - A, T),
+           nrow = 3, ncol = 3,
+           dimnames = list(c("Alt", "Ref", "Total"),
+                           c("Tumour", "Host", "Sample")))
 }
 
-.compound_vaf_correct <- function(total_readddepth,
-                                  alt_readddepth,
-                                  logr,
-                                  host_total_readdepth,
-                                  host_alt_readdepth,
-                                  purity,
-                                  ploidy,
-                                  host_ploidy = 2,
-                                  use_pseudocount = TRUE) {
-    T <- total_readddepth
-    A <- alt_readddepth
-    p_1 <- prob_read_came_from_host(logr, purity, ploidy, host_ploidy)
+#' Probability mass function for the beta-binomial distribution
+#' @param x Integer: Number of successes
+#' @param n Integer: Number of trials
+#' @param a Numeric: alpha parameter of the beta distribution
+#' @param b Numeric: beta parameter of the beta distribution
+#' @returns Numeric: probability of x given n, a, b
+#' @export
+dbetabinom <- function(x, n, a, b) {
+    if (x > n | x < 0) return (0)
+    e1 <- gamma(n + 1) / (gamma(x + 1) * gamma(n - x + 1))
+    e2 <- beta(x + a, n - x + b) / beta(a, b)
+    e1 * e2
+}
+
+#' Calculates the expectation of the tumour VAF, marginalized over
+#' all valid contingency tables, conditioned on observed read totals
+#' Not an exported function - instead expectation_tumour_vaf is the vectorized form of this
+#' @param total_readdepth Integer: Observed total read depth in the tumour sample
+#' @param alt_readdepth Integer: Observed number of reads carrying the alt allele in the tumour sample
+#' @param logr Numeric: Estimated log2 of the ratio of tumour read depth/host read depth
+#' @param host_total_readdepth Integer: Observed total read depth in the matched host sample
+#' @param host_alt_readdepth Integer: Observed number of reads carrying the alt allele in the matched host sample
+#' @param purity Numeric [0, 1]: Estimated aberrant cell fraction of the tumour sample
+#' @param ploidy Numeric: Estimated ploidy of the average tumour cell
+#' @param host_ploidy Numeric: Estimated ploidy of a normal cell (default=2)
+#' @param use_pseudocount Logical: If TRUE, adds 0.5 to the alpha and beta parameters of the beta-binomial distribution
+#' @importFrom data.table as.data.table
+.expectation_tumour_vaf <- function(total_readdepth,
+                                    alt_readdepth,
+                                    logr,
+                                    host_total_readdepth,
+                                    host_alt_readdepth,
+                                    purity,
+                                    ploidy,
+                                    host_ploidy = 2,
+                                    use_pseudocount = TRUE) {
+
+    T <- total_readdepth
+    A <- alt_readdepth
     alpha <- host_alt_readdepth
-    beta <- host_total_readdepth - host_alt_readdepth
+    beta <- host_total_readdepth - alpha
 
     if (use_pseudocount) {
         alpha <- alpha + 0.5
         beta <- beta + 0.5
     }
 
-    g <- expand.grid(K = 0:T, L = 0:A)
-    g <- as.data.table(g)[(L >= A - T + K) & (L <= A)]
-    g[, p := dbetabinom.ab(L, K, alpha, beta, log = FALSE) * dbinom(K, T, p_1), by = K]
-    g[, p := p / sum(p)]
+    pH <- prob_read_came_from_host(logr, purity, ploidy, 2)
 
-    expectedL <- g[, sum(L*p)]
-    expectedK <- g[, sum(K*p)]
-    vaf <- (A - expectedL) / (T - expectedK)
-    ifelse(is.na(vaf), 0, vaf)
+    # Enumerate all possible contingency tables (two degrees of freedom)
+    dt <- as.data.table(expand.grid(Ta = 0:A, Tt = 0:T))[Ta <= Tt]
+    dt[, L := A - Ta]
+    dt[, K := T - Tt]
+    # Restrict to valid tables (all elements non-negative integers; row-marginal sums are respected)
+    dt <- dt[(L >= A - T + K) & (L >= 0) & (L <= A) & (L <= K)]
+    # Compute probability of observing L host alt reads out of K host reads (beta-binomial),
+    # weighted by probability of observing K host reads out of T total reads (binomial)
+    dt[, p := dbetabinom(L, K, alpha, beta) * dbinom(K, T, pH, log = FALSE)]
+    # Condition probability on table being valid
+    dt[, p := p / sum(p)]
+
+    # Compute VAF for each entry, and return its expectation
+    dt[, vaf := ifelse(Tt == 0, 0, Ta / Tt)]
+    dt[, sum(p * vaf)]
 }
 
+#' Calculates the expectation of the tumour VAF, marginalized over
+#' all valid contingency tables, conditioned on observed read totals.
+#' Much slower than `fast_estimate_tumour_vaf`
+#' @param total_readdepth Integer: Observed total read depth in the tumour sample
+#' @param alt_readdepth Integer: Observed number of reads carrying the alt allele in the tumour sample
+#' @param logr Numeric: Estimated log2 of the ratio of tumour read depth/host read depth
+#' @param host_total_readdepth Integer: Observed total read depth in the matched host sample
+#' @param host_alt_readdepth Integer: Observed number of reads carrying the alt allele in the matched host sample
+#' @param purity Numeric [0, 1]: Estimated aberrant cell fraction of the tumour sample
+#' @param ploidy Numeric: Estimated ploidy of the average tumour cell
+#' @param host_ploidy Numeric: Estimated ploidy of a normal cell (default=2)
+#' @param use_pseudocount Logical: If TRUE, adds 0.5 to the alpha and beta parameters of the beta-binomial distribution
 #' @export
-compound_vaf_correct <- Vectorize(.compound_vaf_correct,
+expectation_tumour_vaf <- Vectorize(.expectation_tumour_vaf,
                                   vectorize.args = c(
-                                      "total_readddepth",
-                                      "alt_readddepth",
+                                      "total_readdepth",
+                                      "alt_readdepth",
                                       "logr",
                                       "host_total_readdepth",
                                       "host_alt_readdepth"))
-
