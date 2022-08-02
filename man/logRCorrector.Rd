@@ -30,15 +30,15 @@ used for denoising tumour logR.}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-new}{\code{logRCorrector$new()}}
-\item \href{#method-standardize}{\code{logRCorrector$standardize()}}
-\item \href{#method-denoise}{\code{logRCorrector$denoise()}}
-\item \href{#method-clone}{\code{logRCorrector$clone()}}
+\item \href{#method-logRCorrector-new}{\code{logRCorrector$new()}}
+\item \href{#method-logRCorrector-standardize}{\code{logRCorrector$standardize()}}
+\item \href{#method-logRCorrector-denoise}{\code{logRCorrector$denoise()}}
+\item \href{#method-logRCorrector-clone}{\code{logRCorrector$clone()}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-new"></a>}}
-\if{latex}{\out{\hypertarget{method-new}{}}}
+\if{html}{\out{<a id="method-logRCorrector-new"></a>}}
+\if{latex}{\out{\hypertarget{method-logRCorrector-new}{}}}
 \subsection{Method \code{new()}}{
 Constructor. Builds new object using host read count matrix as input
 \subsection{Usage}{
@@ -58,8 +58,8 @@ Can be set to 0 to disable.}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-standardize"></a>}}
-\if{latex}{\out{\hypertarget{method-standardize}{}}}
+\if{html}{\out{<a id="method-logRCorrector-standardize"></a>}}
+\if{latex}{\out{\hypertarget{method-logRCorrector-standardize}{}}}
 \subsection{Method \code{standardize()}}{
 Calculate standardized (not denoised) logR from tumour read counts
 \subsection{Usage}{
@@ -75,8 +75,8 @@ Calculate standardized (not denoised) logR from tumour read counts
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-denoise"></a>}}
-\if{latex}{\out{\hypertarget{method-denoise}{}}}
+\if{html}{\out{<a id="method-logRCorrector-denoise"></a>}}
+\if{latex}{\out{\hypertarget{method-logRCorrector-denoise}{}}}
 \subsection{Method \code{denoise()}}{
 Calculate denoised logR from tumour read counts.
 \subsection{Usage}{
@@ -97,8 +97,8 @@ singular values. Set to FALSE to use the largest singular values.}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-clone"></a>}}
-\if{latex}{\out{\hypertarget{method-clone}{}}}
+\if{html}{\out{<a id="method-logRCorrector-clone"></a>}}
+\if{latex}{\out{\hypertarget{method-logRCorrector-clone}{}}}
 \subsection{Method \code{clone()}}{
 The objects of this class are cloneable with this method.
 \subsection{Usage}{
