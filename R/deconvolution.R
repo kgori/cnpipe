@@ -245,7 +245,6 @@ fast_estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr
 #' @returns Numeric: probability of x given n, a, b
 #' @export
 dbetabinom <- function(x, n, a, b) {
-    if (x > n | x < 0) return (0)
     e1 <- gamma(n + 1) / (gamma(x + 1) * gamma(n - x + 1))
     e2 <- beta(x + a, n - x + b) / beta(a, b)
     e1 * e2
