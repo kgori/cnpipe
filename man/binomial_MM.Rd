@@ -8,7 +8,9 @@ is inferred from the length of the theta starting parameters vector.}
 binomial_MM(y, theta, lambda, tol = 0.001, max_iter = 1000)
 }
 \arguments{
-\item{y}{Data to fit, as matrix of successes and failures in columns}
+\item{y}{Data to fit, as matrix of successes and failures in columns
+(in DNA variant context, a 'success' is an ALT read, so they go in
+column 1)}
 
 \item{theta}{Vector of starting binomial probability parameters,
 one for each mixture component}

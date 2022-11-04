@@ -49,7 +49,7 @@ bmm_likelihood <- function(m) {
 #' @importFrom "Rfast" rowsums Lgamma eachrow colmeans
 #' @importFrom "logging" loginfo logwarn
 #' @export
-binomial_MM <- function(y, theta, lambda, tol = 1e-3, max_iter = 1000) {
+binomial_MM <- function(y, theta, lambda, tol = 1e-3, max_iter = 1000, fix_theta = FALSE, fix_lambda = FALSE) {
     stopifnot(length(theta) == length(lambda))
     stopifnot(all(theta > 0 & theta < 1))
     stopifnot(all(lambda > 0 & lambda < 1))
@@ -87,10 +87,14 @@ binomial_MM <- function(y, theta, lambda, tol = 1e-3, max_iter = 1000) {
             break
         }
 
-        theta <- t(p) %*% y
-        theta <- (theta / rowsums(theta))[, 1]
-        theta <- pmin(1-1e-16, pmax(1e-16, theta))
-        lambda <- colmeans(p) # No na.rm = TRUE, but is it necessary?
+        if (!fix_theta) {
+            theta <- t(p) %*% y
+            theta <- (theta / rowsums(theta))[, 1]
+            theta <- pmin(1-1e-16, pmax(1e-16, theta))
+        }
+        if (!fix_lambda) {
+            lambda <- colmeans(p) # No na.rm = TRUE, but is it necessary?
+        }
     }
 
     o <- order(theta)
