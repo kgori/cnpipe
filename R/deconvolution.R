@@ -293,7 +293,20 @@ dbetabinom <- function(x, n, a, b) {
     dt <- dt[(L >= A - T + K) & (L >= 0) & (L <= A) & (L <= K)]
     # Compute probability of observing L host alt reads out of K host reads (beta-binomial),
     # weighted by probability of observing K host reads out of T total reads (binomial)
-    dt[, p := dbetabinom(L, K, alpha, beta) * dbinom(K, T, pH, log = FALSE)]
+
+    .probfun <- function(l, k, t, a, b, p) {
+        # betabinom
+        lgk <- lgamma(k + 1)
+        coeff_bb <- lgk - lgamma(l + 1) - lgamma(k - l + 1)
+        p_bb <- lbeta(l + a, k - l + b) - lbeta(a, b)
+
+        # binom
+        coeff_b <- lgamma(t + 1) - lgk - lgamma(t - k + 1)
+        p_b <- log(p) * k + log1p(-p) * (t - k)
+        exp(coeff_bb + p_bb + coeff_b + p_b)
+    }
+
+    dt[, p := .probfun(L, K, T, alpha, beta, pH)]
     # Condition probability on table being valid
     dt[, p := p / sum(p)]
 
