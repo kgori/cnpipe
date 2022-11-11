@@ -38,12 +38,7 @@ calc_logr <- function(h_ref, h_alt, t_ref, t_alt) {
 #' @export
 calc_total_copynumber <- function(logr, purity, ploidy, host_copy_number = 2.0, host_ploidy = 2.0) {
     R = 2^logr
-    n1 <- R * host_copy_number * (purity * ploidy + (1-purity) * host_ploidy)
-    d1 <- host_ploidy * purity
-    n2 <- (1 - purity) * host_copy_number
-    d2 <- purity
-
-    return (n1/d1 - n2/d2)
+    (R * ((1 - purity) * host_ploidy + purity * ploidy) - host_copy_number * (1 - purity)) / purity
 }
 
 #' Calculates host genotype
