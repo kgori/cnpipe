@@ -391,7 +391,7 @@ idealised_vaf <- function(ta, tb, ha, hb, purity) {
 
 #' @export
 idealised_logr <- function(tn, hn, purity, ploidy, host_ploidy = 2) {
-    log2((hn * (1-purity) + tn * purity) / (((1-purity) * host_ploidy + purity * ploidy)))
+    log2((host_ploidy / hn) * (tn * purity + hn * (1 - purity)) / (ploidy * purity + host_ploidy * (1 - purity)))
 }
 
 replace_na <- function(val, default) {
