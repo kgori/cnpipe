@@ -298,12 +298,11 @@ dbetabinom <- function(x, n, a, b) {
         # betabinom
         lgk <- lgamma(k + 1)
         coeff_bb <- lgk - lgamma(l + 1) - lgamma(k - l + 1)
-        p_bb <- lbeta(l + a, k - l + b) - lbeta(a, b)
+        logp_bb <- lbeta(l + a, k - l + b) - lbeta(a, b)
 
         # binom
-        coeff_b <- lgamma(t + 1) - lgk - lgamma(t - k + 1)
-        p_b <- log(p) * k + log1p(-p) * (t - k)
-        exp(coeff_bb + p_bb + coeff_b + p_b)
+        logp_b <- dbinom(k, t, p, log = TRUE)
+        exp(coeff_bb + logp_bb + coeff_b + logp_b)
     }
 
     dt[, p := .probfun(L, K, T, alpha, beta, pH)]
