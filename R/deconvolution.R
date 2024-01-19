@@ -98,29 +98,41 @@
 #' Expected proportion of tumour reads in a mixed sample, where Nt is
 #' underlying tumour copy number state, Nh is host copy state, and p
 #' is purity:
-#'   P(read=Tumour) = p * Nt / (p * Nt + (1 - p) * Nh) (1)
+#'   P(read=Tumour) = p * (Nt/ψt) / (p * (Nt/ψt) + (1 - p) * (Nh/ψh))
+#'                  = p * ψh * Nt / (p * ψh * Nt + (1 - p) * ψt * Nh) (1)
 #'
 #' Tumour copynumber state is estimated as:
 #'   Nt = (R * Nh * (p*ψt + (1-p) * ψh) - ψh * (1 - p) * Nh)
 #'        --------------------------------------------------  (2)
 #'                            p * ψh
 #' Therefore,
-#'  p * Nt = (R * Nh * (p*ψt + (1-p) * ψh) - ψh * (1 - p) * Nh)
-#'           --------------------------------------------------  (3)
-#'                             ψh
+#'  p * ψh * Nt = Nh * (R * (p*ψt + (1-p) * ψh) - (1 - p) * ψh)) (3)
+#'
 #' And,
-#'  p * Nt + (1 - p) * Nh
-#'         = (R * Nh * (p*ψt + (1-p) * ψh)
-#'           -----------------------------   (4)
-#'                       ψh
-#' Substitute (3) and (4) into (1) to obtain the result.
+#'  p * ψh * Nt + (1 - p) * ψt * Nh
+#'         = Nh * (R * (p*ψt + (1-p) * ψh) - (1 - p) * ψh + (1 - p) * ψt)
+#'
+#' Substitute (3) and (4) into (1) to obtain the result (Nh terms cancel).
 #' @export
 prob_read_came_from_tumour <- function(logr, purity, ploidy, host_ploidy) {
     stopifnot(purity >= 0 & purity <= 1)
     stopifnot(ploidy > 0)
     stopifnot(host_ploidy > 0)
-    denom <- 2^logr * (purity * ploidy + (1 - purity) * host_ploidy)
-    p <- (denom - host_ploidy * (1 - purity)) / denom
+
+    # Compute reuseable terms...
+    # a = R * (p*ψt + (1-p) * ψh)
+    # b = (1 - p) * ψh
+    # c = (1 - p) * ψt
+
+    a <- 2^logr * (purity * ploidy + (1 - purity) * host_ploidy)
+    b <- (1 - purity) * host_ploidy
+    c <- (1 - purity) * ploidy
+
+    numer <- a - b
+    denom <- a - b + c
+
+    p <- numer / denom
+
     pmax(0, pmin(1, p))
 }
 
@@ -244,10 +256,16 @@ fast_estimate_contingency_table <- function(total_readdepth, alt_readdepth, logr
 #' @param b Numeric: beta parameter of the beta distribution
 #' @returns Numeric: probability of x given n, a, b
 #' @export
-dbetabinom <- function(x, n, a, b) {
-    e1 <- gamma(n + 1) / (gamma(x + 1) * gamma(n - x + 1))
-    e2 <- beta(x + a, n - x + b) / beta(a, b)
-    e1 * e2
+dbetabinom <- function(x, n, a, b, log = FALSE) {
+    if (log) {
+        e1 <- lgamma(n + 1) - lgamma(x + 1) - lgamma(n - x + 1)
+        e2 <- lbeta(x + a, n - x + b) - lbeta(a, b)
+        e1 + e2
+    } else {
+        e1 <- gamma(n + 1) / (gamma(x + 1) * gamma(n - x + 1))
+        e2 <- beta(x + a, n - x + b) / beta(a, b)
+        e1 * e2
+    }
 }
 
 #' Calculates the expectation of the tumour VAF, marginalized over
@@ -296,13 +314,12 @@ dbetabinom <- function(x, n, a, b) {
 
     .probfun <- function(l, k, t, a, b, p) {
         # betabinom
-        lgk <- lgamma(k + 1)
-        coeff_bb <- lgk - lgamma(l + 1) - lgamma(k - l + 1)
-        logp_bb <- lbeta(l + a, k - l + b) - lbeta(a, b)
+        logp_bb <- dbetabinom(l, k, a, b, log = TRUE)
 
         # binom
         logp_b <- dbinom(k, t, p, log = TRUE)
-        exp(coeff_bb + logp_bb + coeff_b + logp_b)
+
+        exp(logp_bb + logp_b)
     }
 
     dt[, p := .probfun(L, K, T, alpha, beta, pH)]
